@@ -1,16 +1,56 @@
-# React + Vite
+# Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+This is the React + Vite frontend for the GitHub Profile Analysis Tool. It renders the dashboard UI, chart sections, and repository explorer that sit on top of the backend API.
 
-Currently, two official plugins are available:
+## Stack
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- React 19
+- Vite
+- Axios
+- Recharts
+- React Markdown
+- React Syntax Highlighter
+- Chart.js and React Chart.js 2
 
-## React Compiler
+## Features
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- GitHub username lookup with profile analysis.
+- Developer score and summary cards for followers, repositories, and stars.
+- Language, skills, and activity charts.
+- Repository file explorer and modal tab view.
+- Search suggestions from GitHub user search.
 
-## Expanding the ESLint configuration
+## Setup
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+Install dependencies from the frontend folder:
+
+```bash
+npm install
+```
+
+Run the app:
+
+```bash
+npm run dev
+```
+
+Build and preview:
+
+```bash
+npm run build
+npm run preview
+```
+
+Lint:
+
+```bash
+npm run lint
+```
+
+## Development Notes
+
+- The app expects the backend to be running at `http://localhost:5000`.
+- Repository data is fetched from GitHub API endpoints, so public GitHub rate limits still apply.
+- Main UI code lives in [src/App.jsx](src/App.jsx).
+- Shared chart components live in [src/components/Charts.jsx](src/components/Charts.jsx).
+- The repository file browser lives in [src/components/FileExplorer.jsx](src/components/FileExplorer.jsx) and [src/components/RepoModal.jsx](src/components/RepoModal.jsx).

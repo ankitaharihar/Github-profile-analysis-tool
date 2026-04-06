@@ -8,7 +8,6 @@ import {
 } from "./components/Charts";
 
 // 🔥 Developer Score
-  
 const calculateScore = (profile, repos) => {
   if (!profile || !repos) return 0;
 
@@ -43,68 +42,127 @@ const getLevel = (score) => {
   return "🌱 Beginner";
 };
 
-
 export default function App() {
   const [username, setUsername] = useState("");
   const [profile, setProfile] = useState(null);
   const [repos, setRepos] = useState([]);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState("Overview");
+
   const score = calculateScore(profile, repos);
   const level = getLevel(score);
+  const [suggestions, setSuggestions] = useState([]);
+  const [showDropdown, setShowDropdown] = useState(false);
 
-  
 
-  // 🔥 Fetch Data
-  const analyzeProfile = async () => {
-  if (!username) return;
+  const fetchSuggestions = async (value) => {
+  if (!value) {
+    setSuggestions([]);
+    return;
+  }
 
-  setLoading(true);
   try {
-    const [profileRes, repoRes] = await Promise.all([
-      axios.get(`http://localhost:5000/api/github/${username}`),
-      axios.get(`https://api.github.com/users/${username}/repos?per_page=100`)
-    ]);
+    const res = await axios.get(
+      `https://api.github.com/search/users?q=${value}`
+    );
 
-    setProfile(profileRes.data);
-    setRepos(repoRes.data); 
+    setSuggestions(res.data.items.slice(0, 5)); // top 5 users
+    setShowDropdown(true);
   } catch (err) {
     console.log(err);
   }
-  setLoading(false);
-  
 };
+
+<input
+  value={username}
+  onChange={(e) => {
+    setUsername(e.target.value);
+    fetchSuggestions(e.target.value);
+  }}
+  onFocus={() => setShowDropdown(true)}
+  className="..."
+/>
+{showDropdown && suggestions.length > 0 && (
+  <div className="absolute mt-2 w-full bg-[#0f172a] border border-white/10 rounded-xl shadow-lg z-50">
+    {suggestions.map((user) => (
+      <div
+        key={user.id}
+        onClick={() => {
+          setUsername(user.login);
+          setShowDropdown(false);
+        }}
+        className="flex items-center gap-3 p-3 hover:bg-indigo-500/20 cursor-pointer"
+      >
+        <img
+          src={user.avatar_url}
+          className="w-8 h-8 rounded-full"
+        />
+        <p className="text-sm text-gray-300">{user.login}</p>
+      </div>
+    ))}
+  </div>
+)}
+<div className="flex gap-2 mt-3 flex-wrap">
+  {[
+    "Frontend Dev",
+    "Backend Dev",
+    "React Dev",
+    "ML Engineer",
+    "Open Source"
+  ].map((role) => (
+    <button
+      key={role}
+      className="px-3 py-1 text-xs rounded-full 
+      bg-white/5 border border-white/10 
+      text-gray-300 hover:bg-indigo-500/20 hover:text-indigo-300"
+    >
+      {role}
+    </button>
+  ))}
+</div>
+  // 🔥 Fetch Data
+  const analyzeProfile = async () => {
+    if (!username) return;
+
+    setLoading(true);
+    try {
+      const [profileRes, repoRes] = await Promise.all([
+        axios.get(`http://localhost:5000/api/github/${username}`),
+        axios.get(`https://api.github.com/users/${username}/repos?per_page=100`)
+      ]);
+
+      setProfile(profileRes.data);
+      setRepos(repoRes.data || []);
+    } catch (err) {
+      console.log(err);
+    }
+    setLoading(false);
+  };
+
   return (
-   <div className="min-h-screen bg-[#020617] text-white">
+    <div className="min-h-screen bg-[#020617] text-white px-6 py-10">
 
       {/* 🔥 TITLE */}
       <h1 className="text-4xl text-center font-bold bg-gradient-to-r from-indigo-400 to-pink-400 bg-clip-text text-transparent mb-6">
         GitHub Intelligence Pro
       </h1>
 
-      {/* 🔥 INPUT */}
+      {/* 🔍 INPUT */}
       <div className="flex justify-center gap-3 mb-10">
         <input
           value={username}
           onChange={(e) => setUsername(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && analyzeProfile()}
           placeholder="Enter GitHub username"
-          className="w-96 px-4 py-2 rounded-lg bg-[#1e293b] outline-none"
+          className="w-96 px-4 py-2 rounded-lg bg-[#1e293b] outline-none border border-white/10"
         />
         <button
           onClick={analyzeProfile}
           className="px-5 py-2 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-lg"
         >
-          Analyze Profile
+          {loading ? "Loading..." : "Analyze Profile"}
         </button>
       </div>
-
-      {/* 🔥 LOADER */}
-      {loading && (
-        <div className="flex justify-center mt-20">
-          <div className="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
-        </div>
-      )}
 
       {/* 🔥 PROFILE */}
       {profile && (
@@ -137,32 +195,62 @@ export default function App() {
           {/* 🔥 OVERVIEW */}
           {activeTab === "Overview" && (
             <>
-              {/* SCORE + STATS */}
-              <div className="grid md:grid-cols-4 gap-6 mb-8">
-                
-              <div className="col-span-2 p-6 rounded-2xl 
-bg-gradient-to-r from-indigo-600 to-purple-600 
-shadow-xl shadow-indigo-500/30">
+              {/* 🔥 SCORE + STATS */}
+              <div className="grid md:grid-cols-4 gap-6 mb-6">
 
-  <p className="text-sm opacity-80">Developer Score</p>
+                {/* ⭐ DEV SCORE */}
+                <div className="p-5 rounded-2xl bg-[#0f172a]/80 backdrop-blur-xl border border-white/10">
 
-  <h1 className="text-4xl font-bold mt-2">{score}</h1>
+  {/* Glow Background */}
+  <div className="absolute inset-0 bg-gradient-to-r from-indigo-500/20 to-purple-500/20 blur-2xl opacity-40"></div>
 
-  <p className="text-sm mt-1 opacity-80">
-    {level} • out of 100
-  </p>
+  {/* Content */}
+  <div className="relative z-10 flex justify-between items-center">
+
+    {/* LEFT */}
+    <div>
+      <p className="text-sm text-gray-400">Developer Score</p>
+
+      <h1 className="text-5xl font-bold mt-2 bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">
+        {score}
+      </h1>
+
+      <p className="text-sm mt-2 text-indigo-400 font-medium">
+        {level}
+      </p>
+
+      <p className="text-xs text-gray-500">out of 100</p>
+    </div>
+
+    {/* RIGHT (Progress Circle) */}
+    <div className="relative w-20 h-20">
+      <div className="absolute inset-0 rounded-full border-4 border-white/10"></div>
+
+      <div
+        className="absolute inset-0 rounded-full border-4 border-indigo-500 
+        animate-pulse"
+        style={{
+          clipPath: `inset(${100 - score}% 0 0 0)`
+        }}
+      ></div>
+    </div>
+
+  </div>
 </div>
 
+                {/* 📦 REPOS */}
                 <div className="p-6 rounded-2xl bg-[#0f172a]/60 border border-white/10">
                   <p>Repositories</p>
                   <h2 className="text-3xl font-bold">{repos.length}</h2>
                 </div>
 
+                {/* 👥 FOLLOWERS */}
                 <div className="p-6 rounded-2xl bg-[#0f172a]/60 border border-white/10">
                   <p>Followers</p>
                   <h2 className="text-3xl font-bold">{profile.followers}</h2>
                 </div>
 
+                {/* ⭐ STARS */}
                 <div className="p-6 rounded-2xl bg-[#0f172a]/60 border border-white/10">
                   <p>Total Stars</p>
                   <h2 className="text-3xl font-bold">
@@ -171,25 +259,28 @@ shadow-xl shadow-indigo-500/30">
                 </div>
               </div>
 
-              {/* CHARTS */}
+              {/* 📊 CHARTS */}
               <div className="grid md:grid-cols-2 gap-6">
-                
+
+                {/* LANGUAGES */}
                 <div className="p-6 rounded-2xl bg-gradient-to-br from-[#0f172a]/90 to-[#1e293b]/70 
-shadow-[0_0_40px_rgba(99,102,241,0.15)] border border-white/10">
+                shadow-[0_0_40px_rgba(99,102,241,0.15)] border border-white/10">
                   <h2 className="mb-4">Languages</h2>
                   <LanguageChart repos={repos} />
                 </div>
 
+                {/* SKILLS */}
                 <div className="p-6 rounded-2xl bg-gradient-to-br from-[#0f172a]/90 to-[#1e293b]/70 
-shadow-[0_0_40px_rgba(99,102,241,0.15)] border border-white/10">
+                shadow-[0_0_40px_rgba(99,102,241,0.15)] border border-white/10">
                   <h2 className="mb-4">Skills</h2>
                   <RadarChartBox repos={repos} />
                 </div>
 
+                {/* ACTIVITY */}
                 <div className="col-span-2 p-6 rounded-2xl bg-gradient-to-br from-[#0f172a]/90 to-[#1e293b]/70 
-shadow-[0_0_40px_rgba(99,102,241,0.15)] border border-white/10">
+                shadow-[0_0_40px_rgba(99,102,241,0.15)] border border-white/10">
                   <h2 className="mb-4">Activity</h2>
-                  <ActivityChart />
+                  <ActivityChart repos={repos} />
                 </div>
 
               </div>
