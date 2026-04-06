@@ -12,7 +12,7 @@ export async function handler(event) {
   } catch (err) {
     return {
       statusCode: 500,
-      body: JSON.stringify({ error: "Failed to fetch" }),
+      body: JSON.stringify({ error: "Failed" }),
     };
   }
 }
