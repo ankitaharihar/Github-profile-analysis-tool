@@ -17,19 +17,21 @@ import {
 const COLORS = ["#3b82f6", "#8b5cf6", "#ec4899", "#22c55e", "#f59e0b"];
 
 // 🔥 LANGUAGE CHART (Donut)
-export function LanguageChart({ repos }) {
-  const langMap = {};
+export function LanguageChart({ languageData = [], repos = [] }) {
+  const fallbackMap = {};
 
   repos.forEach((repo) => {
     if (repo.language) {
-      langMap[repo.language] = (langMap[repo.language] || 0) + 1;
+      fallbackMap[repo.language] = (fallbackMap[repo.language] || 0) + 1;
     }
   });
 
-  const data = Object.keys(langMap).map((key) => ({
+  const fallbackData = Object.keys(fallbackMap).map((key) => ({
     name: key,
-    value: langMap[key]
+    value: fallbackMap[key]
   }));
+
+  const data = languageData.length > 0 ? languageData : fallbackData;
 
   return (
     <ResponsiveContainer width="100%" height={260}>
@@ -46,6 +48,17 @@ export function LanguageChart({ repos }) {
             <Cell key={index} fill={COLORS[index % COLORS.length]} />
           ))}
         </Pie>
+        <Tooltip
+          formatter={(value, name) => [value, name]}
+          contentStyle={{
+            backgroundColor: "#0f172a",
+            border: "1px solid rgba(255,255,255,0.12)",
+            borderRadius: "12px",
+            color: "#e2e8f0"
+          }}
+          labelStyle={{ color: "#cbd5e1" }}
+          cursor={{ fill: "rgba(255,255,255,0.06)" }}
+        />
       </PieChart>
     </ResponsiveContainer>
   );

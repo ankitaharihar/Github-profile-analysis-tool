@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import axios from "axios";
+import "./App.css";
 
 import {
   LanguageChart,
@@ -108,21 +109,22 @@ const getLoginNotice = () => {
 
 export default function App() {
   const [authUser, setAuthUser] = useState(getAuthUser);
-  const [loginNotice] = useState(getLoginNotice);
+  const [loginNotice, setLoginNotice] = useState(getLoginNotice);
   const [oauthConfig, setOauthConfig] = useState({ github: false, google: false, linkedin: false });
-  const [username, setUsername] = useState(() => {
-    try {
-      return localStorage.getItem("lastUsername") || "";
-    } catch {
-      return "";
-    }
-  });
+  const [username, setUsername] = useState("");
   const [profile, setProfile] = useState(null);
   const [repos, setRepos] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [showLoginPage, setShowLoginPage] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [showExploreMenu, setShowExploreMenu] = useState(false);
+  const [languageData, setLanguageData] = useState([]);
   const [suggestions, setSuggestions] = useState([]);
   const [showDropdown, setShowDropdown] = useState(false);
+  const profileMenuRef = useRef(null);
+  const exploreMenuRef = useRef(null);
   const [history, setHistory] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem("history")) || [];
@@ -144,6 +146,39 @@ export default function App() {
     loadOauthConfig();
   }, []);
 
+  useEffect(() => {
+    if (!loginNotice) return undefined;
+
+    const timer = window.setTimeout(() => {
+      setLoginNotice(null);
+
+      const url = new URL(window.location.href);
+      url.searchParams.delete("login_success");
+      url.searchParams.delete("login_error");
+      window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+    }, 3000);
+
+    return () => window.clearTimeout(timer);
+  }, [loginNotice]);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (profileMenuRef.current && !profileMenuRef.current.contains(event.target)) {
+        setShowProfileMenu(false);
+      }
+
+      if (exploreMenuRef.current && !exploreMenuRef.current.contains(event.target)) {
+        setShowExploreMenu(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
   const startOAuthLogin = (provider) => {
     if (!oauthConfig[provider]) return;
 
@@ -154,14 +189,18 @@ export default function App() {
     clearCookie("oauth_user");
     setAuthUser(null);
     setShowHistory(false);
+    setShowProfileMenu(false);
+    setShowExploreMenu(false);
     setProfile(null);
     setRepos([]);
+    setLanguageData([]);
     setUsername("");
     setSuggestions([]);
     setShowDropdown(false);
     localStorage.removeItem("lastUsername");
     localStorage.removeItem("history");
     setHistory([]);
+    setLanguageData([]);
   };
 
   const fetchSuggestions = async (value) => {
@@ -181,11 +220,52 @@ export default function App() {
     }
   };
 
+  const collectLanguageData = async (repoList) => {
+    const totals = {};
+
+    await Promise.allSettled(
+      repoList.map(async (repo) => {
+        if (!repo.languages_url) {
+          if (repo.language) {
+            totals[repo.language] = (totals[repo.language] || 0) + 1;
+          }
+          return;
+        }
+
+        try {
+          const response = await axios.get(repo.languages_url);
+          const entries = Object.entries(response.data || {});
+
+          if (entries.length === 0 && repo.language) {
+            totals[repo.language] = (totals[repo.language] || 0) + 1;
+            return;
+          }
+
+          entries.forEach(([language, bytes]) => {
+            totals[language] = (totals[language] || 0) + bytes;
+          });
+        } catch {
+          if (repo.language) {
+            totals[repo.language] = (totals[repo.language] || 0) + 1;
+          }
+        }
+      })
+    );
+
+    return Object.entries(totals)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 8)
+      .map(([name, value]) => ({ name, value }));
+  };
+
   const analyzeProfile = async (user = username) => {
-    if (!user || !authUser) return;
+    if (!user) return;
 
     setLoading(true);
+    setError("");
     setProfile(null);
+    setRepos([]);
+    setShowDropdown(false);
 
     try {
       const [profileRes, repoRes] = await Promise.all([
@@ -194,8 +274,9 @@ export default function App() {
       ]);
 
       setProfile(profileRes.data);
-      setRepos(repoRes.data || []);
-      localStorage.setItem("lastUsername", user);
+      const repoList = repoRes.data || [];
+      setRepos(repoList);
+      setLanguageData(await collectLanguageData(repoList));
 
       setHistory((prevHistory) => {
         const updated = [user, ...prevHistory.filter((item) => item !== user)].slice(0, 5);
@@ -204,36 +285,40 @@ export default function App() {
       });
     } catch (err) {
       console.log(err);
+      setError("User not found or GitHub API limit reached. Please try another username in a moment.");
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   };
 
   const score = calculateScore(profile, repos);
   const level = getLevel(score);
+  const isResultView = Boolean(profile);
+  const isHomeView = !isResultView && !showLoginPage && !showHistory;
+  const isHistoryView = !isResultView && !showLoginPage && authUser && showHistory;
 
-  const recentProfileCards = [
+  const loginProviders = [
     {
-      name: "torvalds",
-      meta: "1.2M commits • 45 repos",
-      avatar: "👨‍💻",
+      key: "github",
+      label: "Continue with GitHub",
+      subtitle: "Best for developer-first sign in",
     },
     {
-      name: "gaearon",
-      meta: "89K commits • 234 repos",
-      avatar: "🧑‍💼",
+      key: "google",
+      label: "Continue with Google",
+      subtitle: "Use your Google account securely",
     },
     {
-      name: "sindresorhus",
-      meta: "156K commits • 1100 repos",
-      avatar: "👨‍💻",
+      key: "linkedin",
+      label: "Continue with LinkedIn",
+      subtitle: "Use your professional profile",
     },
   ];
 
   return (
     <div className="app-shell min-h-screen px-4 py-4 text-white md:px-6 md:py-5">
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-12">
-        <header className="nav-shell flex items-center justify-between gap-4 rounded-[1.75rem] border border-white/10 px-4 py-3 md:px-5">
+        <header className="nav-shell relative z-50 flex items-center justify-between gap-4 rounded-[1.75rem] border border-white/10 px-4 py-3 md:px-5">
           <div className="flex min-w-0 items-center gap-3">
             <div className="brand-mark">
               <svg viewBox="0 0 24 24" aria-hidden="true" className="brand-mark__icon">
@@ -259,40 +344,144 @@ export default function App() {
             <a href="#">Documentation</a>
           </nav>
 
-          <div className="flex items-center gap-3">
+          <div className="hidden items-center lg:block" ref={exploreMenuRef}>
             <button
-              onClick={() => authUser && setShowHistory((value) => !value)}
-              disabled={!authUser}
-              className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition ${
-                authUser
-                  ? "text-slate-200 hover:bg-white/5"
-                  : "cursor-not-allowed text-slate-500"
-              }`}
+              type="button"
+              onClick={() => setShowExploreMenu((value) => !value)}
+              className="explore-pill rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-slate-200 hover:bg-white/10"
             >
-              <span>↺</span>
-              <span>History</span>
+              Explore
             </button>
 
-            {authUser ? (
+            {showExploreMenu && (
+              <div className="explore-menu absolute left-1/2 top-full z-50 mt-3 w-88 -translate-x-1/2 overflow-hidden rounded-3xl border border-white/10 bg-[#111827] p-4 shadow-2xl shadow-black/50">
+                  setLanguageData([]);
+                <div className="text-xs uppercase tracking-[0.22em] text-slate-500">
+                  What this app includes
+                </div>
+
+                <div className="mt-3 grid gap-2">
+                  <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                    <div className="text-sm font-semibold text-white">Profile Search</div>
+                    <div className="mt-1 text-xs text-slate-400">Search any public GitHub username and load profile data instantly.</div>
+                  </div>
+
+                  <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                    <div className="text-sm font-semibold text-white">Analytics Dashboard</div>
+                    <div className="mt-1 text-xs text-slate-400">View score, followers, stars, language breakdown, and activity graphs.</div>
+                  </div>
+
+                  <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                    <div className="text-sm font-semibold text-white">Login + History</div>
+                    <div className="mt-1 text-xs text-slate-400">Sign in to unlock search history and profile menu actions.</div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center gap-3">
+            {isResultView ? (
               <button
-                onClick={handleSignOut}
+                onClick={() => {
+                  setProfile(null);
+                  setRepos([]);
+                  setLanguageData([]);
+                  setError("");
+                  setShowHistory(false);
+                  setShowProfileMenu(false);
+                }}
                 className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white hover:bg-white/10"
               >
-                Sign Out
+                Search another profile
               </button>
             ) : (
-              <button
-                onClick={() => startOAuthLogin("github")}
-                disabled={!oauthConfig.github}
-                className="login-pill rounded-full px-5 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-70"
-              >
-                Login <span className="ml-1 text-xs">⌄</span>
-              </button>
+              <>
+                <button
+                  onClick={() => {
+                    if (authUser) {
+                      setShowHistory((value) => !value);
+                      return;
+                    }
+                    setShowLoginPage(true);
+                  }}
+                  disabled={!authUser && !oauthConfig.github}
+                  className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition ${
+                    authUser
+                      ? "text-slate-200 hover:bg-white/5"
+                      : "text-slate-300 hover:bg-white/5 disabled:cursor-not-allowed disabled:text-slate-500"
+                  }`}
+                >
+                  <span>↺</span>
+                  <span>History</span>
+                </button>
+
+                {authUser ? (
+                  <div className="relative z-50" ref={profileMenuRef}>
+                    <button
+                      onClick={() => setShowProfileMenu((value) => !value)}
+                      className="profile-pill flex items-center gap-3 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-left text-sm font-semibold text-white hover:bg-white/10"
+                    >
+                      <img
+                        src={authUser.avatarUrl}
+                        alt={authUser.name || authUser.login}
+                        className="h-8 w-8 rounded-full border border-white/10 object-cover"
+                      />
+                      <div className="min-w-0">
+                        <div className="truncate text-sm leading-tight text-white">
+                          {authUser.name || authUser.login}
+                        </div>
+                        <div className="truncate text-xs leading-tight text-slate-400">
+                          @{authUser.login}
+                        </div>
+                      </div>
+                      <span className="ml-1 text-xs text-slate-400">⌄</span>
+                    </button>
+
+                    {showProfileMenu && (
+                      <div className="profile-menu absolute right-0 top-full z-50 mt-3 w-64 overflow-hidden rounded-2xl border border-white/10 bg-[#111827] p-2 shadow-2xl shadow-black/50">
+                        <div className="px-3 py-2 text-xs uppercase tracking-[0.18em] text-slate-500">
+                          GitHub Profile
+                        </div>
+                        <div className="flex items-center gap-3 rounded-xl px-3 py-2">
+                          <img
+                            src={authUser.avatarUrl}
+                            alt={authUser.name || authUser.login}
+                            className="h-10 w-10 rounded-full border border-white/10 object-cover"
+                          />
+                          <div className="min-w-0">
+                            <div className="truncate text-sm font-semibold text-white">
+                              {authUser.name || authUser.login}
+                            </div>
+                            <div className="truncate text-xs text-slate-400">
+                              @{authUser.login}
+                            </div>
+                          </div>
+                        </div>
+                        <button
+                          onClick={handleSignOut}
+                          className="mt-2 flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-medium text-rose-200 transition hover:bg-white/5 hover:text-white"
+                        >
+                          <span>↪</span>
+                          <span>Sign out</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setShowLoginPage(true)}
+                    className="login-pill rounded-full px-5 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-70"
+                  >
+                    Login <span className="ml-1 text-xs">⌄</span>
+                  </button>
+                )}
+              </>
             )}
           </div>
         </header>
 
-        {loginNotice && (
+        {!isResultView && loginNotice && (
           <div
             className={`mx-auto w-full max-w-6xl rounded-2xl border px-4 py-3 text-sm ${
               loginNotice.type === "error"
@@ -304,62 +493,74 @@ export default function App() {
           </div>
         )}
 
-        <section className="hero-panel relative overflow-hidden rounded-4xl px-4 py-12 text-center md:px-8 md:py-20">
+        {isHomeView && (
+        <section className="hero-panel relative overflow-hidden rounded-4xl px-4 py-10 text-center md:px-8 md:py-14">
           <div className="hero-grid" aria-hidden="true" />
           <div className="hero-orb hero-orb--left" aria-hidden="true" />
           <div className="hero-orb hero-orb--right" aria-hidden="true" />
 
           <div className="relative z-10 mx-auto flex max-w-5xl flex-col items-center">
-            <div className="hero-badge mb-10 inline-flex items-center gap-2 rounded-full border border-white/10 px-5 py-2 text-sm font-medium text-violet-200 shadow-lg shadow-violet-500/10">
+            <div className="hero-badge mb-8 inline-flex items-center gap-2 rounded-full border border-white/10 px-5 py-2 text-sm font-medium text-violet-200 shadow-lg shadow-violet-500/10">
               <span className="text-lg text-violet-300">✦</span>
               <span>Powered by Advanced AI Analytics</span>
               <span className="text-lg text-violet-300">✦</span>
             </div>
 
-            <h1 className="hero-heading max-w-5xl text-balance font-extrabold leading-[0.88] tracking-tight">
+            <h1 className="hero-heading max-w-4xl text-balance font-extrabold leading-[0.9] tracking-tight">
               <span className="hero-heading__top block text-white/90">Unlock the Power of</span>
               <span className="hero-heading__bottom block">GitHub Intelligence</span>
             </h1>
 
-            <p className="mt-9 max-w-4xl text-base leading-8 text-slate-300 md:text-[1.45rem] md:leading-[2.2rem]">
+            <p className="mt-7 max-w-4xl text-base leading-8 text-slate-300 md:text-[1.3rem] md:leading-8">
               Analyze profiles, track contributions, and gain deep insights into GitHub repositories with our advanced analytics platform.
             </p>
 
-            <div className="mt-12 w-full max-w-5xl rounded-[1.8rem] border border-fuchsia-500/30 bg-[#1a2337]/95 p-3 shadow-[0_0_32px_rgba(236,72,153,0.38)] md:p-4">
-              <div className="flex flex-col gap-3 md:flex-row md:items-stretch">
+            <div className="mt-9 w-full max-w-5xl rounded-[1.6rem] border border-fuchsia-500/30 bg-[#1a2337]/95 p-2.5 shadow-[0_0_28px_rgba(236,72,153,0.34)] md:p-3">
+              <div className="flex flex-col gap-2.5 md:flex-row md:items-stretch">
                 <div className="relative flex-1">
-                  <span className="pointer-events-none absolute left-5 top-1/2 -translate-y-1/2 text-slate-500">⌕</span>
+                  <div className="pointer-events-none absolute left-5 top-1/2 -translate-y-1/2 text-slate-500">
+                    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5">
+                      <path
+                        fill="currentColor"
+                        d="M12 2C6.48 2 2 6.58 2 12.26c0 4.53 2.87 8.37 6.84 9.73.5.1.68-.22.68-.48 0-.24-.01-.88-.02-1.72-2.78.62-3.37-1.38-3.37-1.38-.45-1.18-1.11-1.49-1.11-1.49-.91-.64.07-.63.07-.63 1 .07 1.53 1.06 1.53 1.06.9 1.58 2.36 1.12 2.94.86.09-.67.35-1.12.64-1.38-2.22-.26-4.56-1.15-4.56-5.12 0-1.13.39-2.06 1.03-2.79-.1-.27-.45-1.34.1-2.78 0 0 .84-.27 2.75 1.06A9.3 9.3 0 0 1 12 6.85c.85 0 1.71.12 2.51.35 1.91-1.33 2.75-1.06 2.75-1.06.55 1.44.2 2.51.1 2.78.64.73 1.03 1.66 1.03 2.79 0 3.98-2.34 4.86-4.57 5.11.36.32.68.94.68 1.9 0 1.37-.01 2.48-.01 2.82 0 .27.18.59.69.48A10.27 10.27 0 0 0 22 12.26C22 6.58 17.52 2 12 2Z"
+                      />
+                    </svg>
+                  </div>
                   <input
                     value={username}
                     onChange={(event) => {
                       setUsername(event.target.value);
-                      if (authUser) {
-                        fetchSuggestions(event.target.value);
-                      }
+                      fetchSuggestions(event.target.value);
                     }}
-                    onFocus={() => authUser && setShowDropdown(true)}
+                    onFocus={() => setShowDropdown(true)}
                     onKeyDown={(event) => event.key === "Enter" && analyzeProfile()}
                     placeholder="Enter GitHub username (e.g., torvalds)"
-                    disabled={!authUser}
-                    className="hero-input h-16 w-full rounded-2xl border border-white/5 bg-[#24314a] pl-14 pr-4 text-base text-slate-100 placeholder:text-slate-500 outline-none disabled:cursor-not-allowed disabled:opacity-60 md:h-16"
+                    className="hero-input h-14 w-full rounded-xl border border-white/5 bg-[#24314a] pl-13 pr-4 text-[0.96rem] text-slate-100 placeholder:text-slate-500 outline-none disabled:cursor-not-allowed disabled:opacity-60 md:h-14"
                   />
                 </div>
 
                 <button
                   onClick={() => analyzeProfile()}
-                  disabled={!authUser}
-                  className="hero-analyze-btn h-16 rounded-2xl px-8 text-base font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60 md:h-16 md:w-44"
+                  className="hero-analyze-btn h-14 rounded-xl px-6 text-[1rem] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60 md:h-14 md:w-40"
                 >
                   <span className="mr-2">⚡</span>
                   Analyze
                 </button>
               </div>
 
-              <p className="mt-5 text-sm text-slate-400 md:text-base">
+              <p className="mt-4 text-sm text-slate-400 md:text-[0.98rem]">
                 Get detailed analytics, contribution graphs, and repository insights
               </p>
 
-              {showDropdown && suggestions.length > 0 && authUser && (
+              {loading && (
+                <p className="mt-3 text-sm text-indigo-200">Fetching profile data...</p>
+              )}
+
+              {error && (
+                <p className="mt-3 text-sm text-rose-300">{error}</p>
+              )}
+
+              {showDropdown && suggestions.length > 0 && (
                 <div className="mt-4 overflow-hidden rounded-[1.2rem] border border-white/10 bg-[#111827] text-left shadow-2xl shadow-black/50">
                   {suggestions.map((user) => (
                     <div
@@ -379,37 +580,100 @@ export default function App() {
               )}
 
               {!authUser && (
-                <div className="mt-6 text-sm text-slate-400">
-                  Sign in to use search and history.
+                <div className="mt-4 text-sm text-slate-400">
+                  Sign in to save and view search history.
                 </div>
               )}
             </div>
 
-            <div className="mt-9 text-sm text-slate-400 md:text-base">
-              Recently searched profiles:
-            </div>
-
-            <div className="mt-5 grid w-full max-w-5xl gap-4 md:grid-cols-3">
-              {recentProfileCards.map((item) => (
-                <div key={item.name} className="recent-card flex items-center gap-4 rounded-2xl border border-white/10 px-4 py-4 text-left">
-                  <div className="recent-card__avatar">{item.avatar}</div>
-                  <div className="min-w-0">
-                    <div className="truncate text-base font-semibold text-white">{item.name}</div>
-                    <div className="truncate text-xs text-slate-400">{item.meta}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
           </div>
         </section>
+        )}
 
-        {authUser && showHistory && history.length > 0 && (
+        {!isResultView && showLoginPage && (
+          <section className="hero-panel relative overflow-hidden rounded-4xl px-4 py-8 md:px-8 md:py-10">
+            <div className="hero-grid" aria-hidden="true" />
+            <div className="hero-orb hero-orb--left" aria-hidden="true" />
+            <div className="hero-orb hero-orb--right" aria-hidden="true" />
+
+            <div className="login-shell relative z-10 mx-auto grid w-full max-w-4xl gap-4 lg:grid-cols-[0.95fr_1.4fr]">
+              <div className="login-brand rounded-3xl border border-white/10 p-6">
+                <div className="inline-flex items-center rounded-full border border-fuchsia-400/30 bg-fuchsia-500/10 px-3 py-1 text-xs font-semibold text-fuchsia-200">
+                  Secure OAuth Access
+                </div>
+                <h2 className="mt-4 text-2xl font-bold text-white md:text-3xl">Welcome back</h2>
+                <p className="mt-2 text-sm text-slate-300 md:text-base">
+                  Sign in to unlock history, saved profiles, and personalized insights.
+                </p>
+                <p className="mt-5 text-xs text-slate-400">
+                  Your account is used only for authentication and personalized dashboard actions.
+                </p>
+              </div>
+
+              <div className="login-card rounded-3xl border border-white/10 p-4 md:p-5">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div className="text-sm font-medium text-slate-300">Choose a sign-in provider</div>
+                  <button
+                    onClick={() => setShowLoginPage(false)}
+                    className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:bg-white/10"
+                  >
+                    Back
+                  </button>
+                </div>
+
+                <div className="space-y-2.5">
+                  {loginProviders.map((provider) => (
+                    <button
+                      key={provider.key}
+                      onClick={() => startOAuthLogin(provider.key)}
+                      disabled={!oauthConfig[provider.key]}
+                      className="login-provider w-full rounded-2xl border border-white/10 bg-[#18233a]/90 px-4 py-3 text-left transition hover:border-fuchsia-400/35 hover:bg-[#1d2a45] disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className={`h-2.5 w-2.5 rounded-full ${
+                          provider.key === "github"
+                            ? "bg-sky-400"
+                            : provider.key === "google"
+                              ? "bg-rose-400"
+                              : "bg-indigo-400"
+                        }`} />
+                        <div className="text-base font-semibold text-white">{provider.label}</div>
+                      </div>
+                      <div className="mt-1 pl-5 text-sm text-slate-400">{provider.subtitle}</div>
+                    </button>
+                  ))}
+                </div>
+
+                {!oauthConfig.github && !oauthConfig.google && !oauthConfig.linkedin && (
+                  <div className="mt-4 rounded-2xl border border-amber-400/20 bg-amber-500/10 p-4 text-sm text-amber-100">
+                    OAuth is not configured on the backend yet. Add your client IDs and secrets in <span className="font-semibold">backend/.env</span>, then restart the backend.
+                  </div>
+                )}
+
+                <p className="mt-4 text-xs text-slate-400">
+                  Providers that are not configured in backend env are shown as disabled.
+                </p>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {isHistoryView && history.length > 0 && (
           <div className="mx-auto w-full max-w-5xl rounded-2xl border border-white/10 bg-white/5 p-4">
-            <div className="mb-3 flex items-center justify-between">
-              <h3 className="text-sm font-semibold tracking-wide text-gray-200">
-                Recent searches
-              </h3>
-              <span className="text-xs text-gray-500">Stored locally in your browser</span>
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-semibold tracking-wide text-gray-200">
+                  Recent searches
+                </h3>
+                <span className="text-xs text-gray-500">Stored locally in your browser</span>
+              </div>
+
+              <button
+                onClick={() => setShowHistory(false)}
+                className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:bg-white/10"
+              >
+                Back to Home
+              </button>
             </div>
 
             <div className="flex flex-wrap gap-2">
@@ -429,9 +693,17 @@ export default function App() {
           </div>
         )}
 
-        {authUser && showHistory && history.length === 0 && (
+        {isHistoryView && history.length === 0 && (
           <div className="mx-auto w-full max-w-5xl rounded-2xl border border-dashed border-white/10 bg-white/5 p-4 text-sm text-gray-400">
-            No search history yet.
+            <div className="flex items-center justify-between gap-3">
+              <span>No search history yet.</span>
+              <button
+                onClick={() => setShowHistory(false)}
+                className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:bg-white/10"
+              >
+                Back to Home
+              </button>
+            </div>
           </div>
         )}
 
@@ -440,11 +712,45 @@ export default function App() {
       {profile && (
         <>
           <div className="mb-6 rounded-2xl border border-white/10 bg-[#0f172a]/80 p-6">
-            <h2 className="text-2xl font-semibold">
-              {profile.name || profile.login}
-            </h2>
-            <p className="text-gray-400">@{profile.login}</p>
-            <p className="mt-2 text-sm">{profile.bio}</p>
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div className="flex items-center gap-4">
+                <img
+                  src={profile.avatar_url}
+                  alt={`${profile.login} avatar`}
+                  className="h-18 w-18 rounded-full border border-white/20 object-cover"
+                />
+                <div>
+                  <h2 className="text-2xl font-semibold">{profile.name || profile.login}</h2>
+                  <p className="text-gray-400">@{profile.login}</p>
+                </div>
+              </div>
+
+              <a
+                href={profile.html_url}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex w-fit items-center rounded-full border border-white/15 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-white/10"
+              >
+                View GitHub Profile
+              </a>
+            </div>
+
+            <p className="mt-4 text-sm text-slate-300">{profile.bio || "No bio provided."}</p>
+
+            <div className="mt-4 flex flex-wrap gap-2 text-xs text-slate-300">
+              {profile.location && (
+                <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">Location: {profile.location}</span>
+              )}
+              {profile.company && (
+                <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">Company: {profile.company}</span>
+              )}
+              {profile.public_gists !== undefined && (
+                <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">Public gists: {profile.public_gists}</span>
+              )}
+              <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">
+                Joined: {new Date(profile.created_at).toLocaleDateString()}
+              </span>
+            </div>
           </div>
 
           <div className="mb-6 grid gap-6 md:grid-cols-4">
@@ -475,7 +781,23 @@ export default function App() {
           <div className="grid gap-6 md:grid-cols-2">
             <div className="rounded-2xl border border-white/10 bg-[#0f172a]/80 p-6">
               <h2 className="mb-4">Languages</h2>
-              <LanguageChart repos={repos} />
+              <LanguageChart repos={repos} languageData={languageData} />
+              <div className="mt-4 flex flex-wrap gap-2">
+                {(languageData.length > 0
+                  ? languageData
+                  : repos
+                      .filter((repo, index, self) => repo.language && self.findIndex((item) => item.language === repo.language) === index)
+                      .map((repo) => ({ name: repo.language, value: 1 })))
+                  .slice(0, 8)
+                  .map((item) => (
+                    <span
+                      key={item.name}
+                      className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300"
+                    >
+                      {item.name}
+                    </span>
+                  ))}
+              </div>
             </div>
 
             <div className="rounded-2xl border border-white/10 bg-[#0f172a]/80 p-6">

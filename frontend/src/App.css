@@ -135,13 +135,13 @@ body::before {
 }
 
 .hero-heading {
-	font-size: clamp(4rem, 7.5vw, 7.8rem);
+	font-size: clamp(2.6rem, 6.2vw, 5.2rem);
 }
 
 .hero-heading__top {
 	color: #edf2ff;
 	letter-spacing: -0.06em;
-	font-size: 0.62em;
+	font-size: 0.66em;
 	white-space: nowrap;
 }
 
@@ -187,10 +187,45 @@ body::before {
 	font-size: 20px;
 }
 
+.login-shell {
+	align-items: stretch;
+}
+
+.login-brand {
+	background:
+		radial-gradient(circle at 15% 10%, rgba(232, 121, 249, 0.16), transparent 40%),
+		linear-gradient(180deg, rgba(16, 28, 51, 0.95) 0%, rgba(10, 20, 40, 0.95) 100%);
+	box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+}
+
+.login-card {
+	background:
+		radial-gradient(circle at 100% 0%, rgba(56, 189, 248, 0.08), transparent 32%),
+		linear-gradient(180deg, rgba(13, 25, 48, 0.94) 0%, rgba(10, 20, 40, 0.96) 100%);
+	box-shadow: 0 18px 45px rgba(0, 0, 0, 0.28);
+}
+
+.login-provider {
+	box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.profile-pill {
+	box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 10px 24px rgba(0, 0, 0, 0.18);
+}
+
+.profile-menu {
+	backdrop-filter: blur(18px);
+}
+
+.profile-menu button {
+	transition: background-color 160ms ease, color 160ms ease;
+}
+
 .hero-input:focus,
 .hero-analyze-btn:hover:not(:disabled),
 .login-pill:hover:not(:disabled),
-.recent-card:hover {
+.recent-card:hover,
+.profile-pill:hover:not(:disabled) {
 	transform: translateY(-1px);
 }
 
@@ -200,11 +235,15 @@ body::before {
 	}
 
 	.hero-heading {
-		font-size: clamp(2.9rem, 15vw, 5.6rem);
+		font-size: clamp(2.2rem, 11.5vw, 3.8rem);
 	}
 
 	.hero-panel {
 		border-radius: 1.6rem;
+	}
+
+	.login-shell {
+		grid-template-columns: 1fr;
 	}
 }
 

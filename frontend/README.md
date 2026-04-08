@@ -58,3 +58,29 @@ npm run lint
 - Main UI code lives in [src/App.jsx](src/App.jsx).
 - Shared chart components live in [src/components/Charts.jsx](src/components/Charts.jsx).
 - The repository file browser lives in [src/components/FileExplorer.jsx](src/components/FileExplorer.jsx) and [src/components/RepoModal.jsx](src/components/RepoModal.jsx).
+
+## OAuth Setup Checklist
+
+If the login buttons are disabled, the backend OAuth values are missing.
+
+### Just GitHub Login
+
+1. Copy [backend/.env.example](../backend/.env.example) to `backend/.env`.
+2. Fill only these 4 values first:
+   - `FRONTEND_URL=http://localhost:5173`
+   - `BACKEND_URL=http://localhost:5000`
+   - `GITHUB_CLIENT_ID=...`
+   - `GITHUB_CLIENT_SECRET=...`
+3. In your GitHub OAuth app, add this callback URL:
+   - `http://localhost:5000/auth/github/callback`
+4. Restart the backend.
+5. Open the login page again and click GitHub login.
+
+### Optional
+
+If you also want Google or LinkedIn login, fill these too:
+
+- `GOOGLE_CLIENT_ID`
+- `GOOGLE_CLIENT_SECRET`
+- `LINKEDIN_CLIENT_ID`
+- `LINKEDIN_CLIENT_SECRET`
