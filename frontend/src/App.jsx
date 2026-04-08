@@ -7,7 +7,8 @@ import {
   ActivityChart
 } from "./components/Charts";
 
-// 🔥 SCORE
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
+
 const calculateScore = (profile, repos) => {
   if (!profile || !repos) return 0;
 
@@ -15,9 +16,9 @@ const calculateScore = (profile, repos) => {
   const stars = repos.reduce((a, r) => a + r.stargazers_count, 0);
   const followers = profile.followers || 0;
 
-  const recentRepos = repos.filter(r => {
+  const recentRepos = repos.filter((repo) => {
     const diff =
-      (Date.now() - new Date(r.updated_at)) / (1000 * 60 * 60 * 24);
+      (Date.now() - new Date(repo.updated_at)) / (1000 * 60 * 60 * 24);
     return diff < 30;
   }).length;
 
@@ -36,7 +37,66 @@ const getLevel = (score) => {
   return "🌱 Beginner";
 };
 
+const readCookie = (name) => {
+  if (typeof document === "undefined") return null;
+
+  const cookie = document.cookie
+    .split(";")
+    .map((item) => item.trim())
+    .find((item) => item.startsWith(`${name}=`));
+
+  return cookie ? cookie.slice(name.length + 1) : null;
+};
+
+const getAuthUser = () => {
+  const rawCookie = readCookie("oauth_user");
+
+  if (!rawCookie) return null;
+
+  try {
+    return JSON.parse(decodeURIComponent(rawCookie));
+  } catch {
+    try {
+      return JSON.parse(rawCookie);
+    } catch {
+      return null;
+    }
+  }
+};
+
+const clearCookie = (name) => {
+  if (typeof document === "undefined") return;
+
+  document.cookie = `${name}=; Max-Age=0; path=/; SameSite=Lax`;
+};
+
+const getLoginNotice = () => {
+  if (typeof window === "undefined") return null;
+
+  const params = new URLSearchParams(window.location.search);
+  const success = params.get("login_success");
+  const error = params.get("login_error");
+
+  if (success) {
+    return {
+      type: "success",
+      text: `Signed in successfully with ${success}.`,
+    };
+  }
+
+  if (error) {
+    return {
+      type: "error",
+      text: `Login failed: ${error}`,
+    };
+  }
+
+  return null;
+};
+
 export default function App() {
+  const [authUser, setAuthUser] = useState(getAuthUser);
+  const [loginNotice] = useState(getLoginNotice);
   const [username, setUsername] = useState(() => {
     try {
       return localStorage.getItem("lastUsername") || "";
@@ -44,21 +104,10 @@ export default function App() {
       return "";
     }
   });
-  const [authUser, setAuthUser] = useState(() => {
-    try {
-      const savedUser = localStorage.getItem("authUser");
-      return savedUser ? JSON.parse(savedUser) : null;
-    } catch {
-      return null;
-    }
-  });
-  const [showLogin, setShowLogin] = useState(false);
-  const [loginForm, setLoginForm] = useState({ username: "", password: "" });
   const [profile, setProfile] = useState(null);
   const [repos, setRepos] = useState([]);
   const [loading, setLoading] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
-
   const [suggestions, setSuggestions] = useState([]);
   const [showDropdown, setShowDropdown] = useState(false);
   const [history, setHistory] = useState(() => {
@@ -69,34 +118,24 @@ export default function App() {
     }
   });
 
-  const handleLogin = (event) => {
-    event.preventDefault();
-
-    if (!loginForm.username.trim() || !loginForm.password.trim()) {
-      return;
-    }
-
-    const sessionUser = {
-      username: loginForm.username.trim()
-    };
-
-    setAuthUser(sessionUser);
-    localStorage.setItem("authUser", JSON.stringify(sessionUser));
-    setShowLogin(false);
-    setLoginForm({ username: "", password: "" });
+  const startOAuthLogin = (provider) => {
+    window.location.href = `${API_BASE_URL}/auth/${provider}`;
   };
 
   const handleSignOut = () => {
+    clearCookie("oauth_user");
     setAuthUser(null);
     setShowHistory(false);
     setProfile(null);
     setRepos([]);
     setUsername("");
-    localStorage.removeItem("authUser");
+    setSuggestions([]);
+    setShowDropdown(false);
     localStorage.removeItem("lastUsername");
+    localStorage.removeItem("history");
+    setHistory([]);
   };
 
-  // 🔍 SUGGESTIONS
   const fetchSuggestions = async (value) => {
     if (!value) {
       setSuggestions([]);
@@ -114,12 +153,11 @@ export default function App() {
     }
   };
 
-  // 🔥 FETCH
   const analyzeProfile = async (user = username) => {
     if (!user || !authUser) return;
 
     setLoading(true);
-    setProfile(null); // 👉 old profile hide
+    setProfile(null);
 
     try {
       const [profileRes, repoRes] = await Promise.all([
@@ -131,13 +169,11 @@ export default function App() {
       setRepos(repoRes.data || []);
       localStorage.setItem("lastUsername", user);
 
-      // 🔥 SAVE HISTORY
       setHistory((prevHistory) => {
         const updated = [user, ...prevHistory.filter((item) => item !== user)].slice(0, 5);
         localStorage.setItem("history", JSON.stringify(updated));
         return updated;
       });
-
     } catch (err) {
       console.log(err);
     }
@@ -149,8 +185,8 @@ export default function App() {
   const level = getLevel(score);
 
   return (
-    <div className="min-h-screen bg-[#020617] text-white px-6 py-10">
-      <div className="sticky top-4 z-40 mx-auto mb-8 flex w-full max-w-6xl items-center justify-between rounded-2xl border border-white/10 bg-[#0f172a]/90 px-4 py-3 shadow-xl shadow-black/30 backdrop-blur">
+    <div className="min-h-screen bg-[#020617] px-6 py-10 text-white">
+      <div className="mx-auto mb-6 flex w-full max-w-6xl items-center justify-between rounded-2xl border border-white/10 bg-[#0f172a]/90 px-4 py-3 shadow-xl shadow-black/30 backdrop-blur">
         <div>
           <p className="text-xs uppercase tracking-[0.3em] text-gray-400">Home</p>
           <h2 className="text-sm font-semibold text-gray-100">
@@ -158,26 +194,40 @@ export default function App() {
           </h2>
           {authUser && (
             <p className="mt-1 text-xs text-emerald-300">
-              Signed in as {authUser.username}
+              Signed in as {authUser.name || authUser.login || authUser.email}
+              {authUser.provider ? ` via ${authUser.provider}` : ""}
             </p>
           )}
         </div>
 
         <div className="flex items-center gap-2">
           <button
-            onClick={() => setShowHistory((value) => !value)}
-            className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm hover:bg-white/10"
+            onClick={() => authUser && setShowHistory((value) => !value)}
+            disabled={!authUser}
+            className={`rounded-full border px-4 py-2 text-sm transition ${
+              authUser
+                ? "border-white/10 bg-white/5 hover:bg-white/10"
+                : "cursor-not-allowed border-white/5 bg-white/5 text-gray-500"
+            }`}
           >
             {showHistory ? "Close history" : "History"}
           </button>
 
           {!authUser ? (
-            <button
-              onClick={() => setShowLogin(true)}
-              className="rounded-full bg-linear-to-r from-indigo-500 to-purple-500 px-4 py-2 text-sm font-medium shadow-lg shadow-indigo-500/20"
-            >
-              Login
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => startOAuthLogin("github")}
+                className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm hover:bg-white/10"
+              >
+                Login with GitHub
+              </button>
+              <button
+                onClick={() => startOAuthLogin("google")}
+                className="rounded-full bg-linear-to-r from-indigo-500 to-purple-500 px-4 py-2 text-sm font-medium shadow-lg shadow-indigo-500/20"
+              >
+                Login with Google
+              </button>
+            </div>
           ) : (
             <button
               onClick={handleSignOut}
@@ -189,32 +239,43 @@ export default function App() {
         </div>
       </div>
 
-      {/* TITLE */}
-      <h1 className="text-4xl text-center font-bold bg-linear-to-r from-indigo-400 to-pink-400 bg-clip-text text-transparent mb-6">
+      {loginNotice && (
+        <div
+          className={`mx-auto mb-6 w-full max-w-6xl rounded-2xl border px-4 py-3 text-sm ${
+            loginNotice.type === "error"
+              ? "border-red-500/20 bg-red-500/10 text-red-200"
+              : "border-emerald-500/20 bg-emerald-500/10 text-emerald-200"
+          }`}
+        >
+          {loginNotice.text}
+        </div>
+      )}
+
+      <h1 className="mb-6 text-center text-4xl font-bold bg-linear-to-r from-indigo-400 to-pink-400 bg-clip-text text-transparent">
         GitHub Intelligence Pro
       </h1>
 
-      {/* SEARCH */}
-      <div className="flex flex-col items-center gap-3 mb-10 relative">
-
+      <div className="relative mb-10 flex flex-col items-center gap-3">
         <div className="flex gap-3">
           <input
             value={username}
-            onChange={(e) => {
-              setUsername(e.target.value);
-              fetchSuggestions(e.target.value);
+            onChange={(event) => {
+              setUsername(event.target.value);
+              if (authUser) {
+                fetchSuggestions(event.target.value);
+              }
             }}
-            onFocus={() => setShowDropdown(true)}
-            onKeyDown={(e) => e.key === "Enter" && analyzeProfile()}
+            onFocus={() => authUser && setShowDropdown(true)}
+            onKeyDown={(event) => event.key === "Enter" && analyzeProfile()}
             placeholder="Enter GitHub username"
             disabled={!authUser}
-            className="w-96 px-4 py-2 rounded-lg bg-[#1e293b] border border-white/10"
+            className="w-96 rounded-lg border border-white/10 bg-[#1e293b] px-4 py-2 disabled:cursor-not-allowed disabled:opacity-60"
           />
 
           <button
             onClick={() => analyzeProfile()}
             disabled={!authUser}
-            className="px-5 py-2 bg-linear-to-r from-indigo-500 to-purple-500 rounded-lg"
+            className="rounded-lg bg-linear-to-r from-indigo-500 to-purple-500 px-5 py-2 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {loading ? "Loading..." : "Analyze"}
           </button>
@@ -222,19 +283,20 @@ export default function App() {
 
         {!authUser && (
           <div className="w-full max-w-4xl rounded-2xl border border-dashed border-white/10 bg-[#0f172a]/40 p-4 text-sm text-gray-300">
-            Search aur history use karne ke liye pehle Login button dabao.
+            Search aur history use karne ke liye GitHub ya Google login karo.
           </div>
         )}
 
-        {/* HISTORY */}
-        {showHistory && history.length > 0 && (
+        {authUser && showHistory && history.length > 0 && (
           <div className="w-full max-w-4xl rounded-2xl border border-white/10 bg-[#0f172a]/70 p-4">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold tracking-wide text-gray-200">Recent searches</h3>
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-sm font-semibold tracking-wide text-gray-200">
+                Recent searches
+              </h3>
               <span className="text-xs text-gray-500">Stored locally in your browser</span>
             </div>
 
-            <div className="flex gap-2 flex-wrap">
+            <div className="flex flex-wrap gap-2">
               {history.map((item) => (
                 <button
                   key={item}
@@ -242,7 +304,7 @@ export default function App() {
                     setUsername(item);
                     analyzeProfile(item);
                   }}
-                  className="px-3 py-1 text-sm bg-white/5 border border-white/10 rounded-full hover:bg-indigo-500/20"
+                  className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-sm hover:bg-indigo-500/20"
                 >
                   {item}
                 </button>
@@ -251,15 +313,14 @@ export default function App() {
           </div>
         )}
 
-        {showHistory && history.length === 0 && (
+        {authUser && showHistory && history.length === 0 && (
           <div className="w-full max-w-4xl rounded-2xl border border-dashed border-white/10 bg-[#0f172a]/40 p-4 text-sm text-gray-400">
             No search history yet.
           </div>
         )}
 
-        {/* SUGGESTIONS */}
-        {showDropdown && suggestions.length > 0 && (
-          <div className="absolute top-20 w-96 bg-[#0f172a] border border-white/10 rounded-xl shadow-lg z-50">
+        {showDropdown && suggestions.length > 0 && authUser && (
+          <div className="absolute top-20 z-50 w-96 rounded-xl border border-white/10 bg-[#0f172a] shadow-lg">
             {suggestions.map((user) => (
               <div
                 key={user.id}
@@ -268,134 +329,68 @@ export default function App() {
                   setShowDropdown(false);
                   analyzeProfile(user.login);
                 }}
-                className="flex items-center gap-3 p-3 hover:bg-indigo-500/20 cursor-pointer"
+                className="flex cursor-pointer items-center gap-3 p-3 hover:bg-indigo-500/20"
               >
-                <img src={user.avatar_url} className="w-8 h-8 rounded-full" />
+                <img src={user.avatar_url} className="h-8 w-8 rounded-full" />
                 <p className="text-sm text-gray-300">{user.login}</p>
               </div>
             ))}
           </div>
         )}
-
       </div>
 
-      {/* PROFILE */}
       {profile && (
         <>
-          {/* HEADER */}
-          <div className="p-6 rounded-2xl bg-[#0f172a]/80 border border-white/10 mb-6">
+          <div className="mb-6 rounded-2xl border border-white/10 bg-[#0f172a]/80 p-6">
             <h2 className="text-2xl font-semibold">
               {profile.name || profile.login}
             </h2>
             <p className="text-gray-400">@{profile.login}</p>
-            <p className="text-sm mt-2">{profile.bio}</p>
+            <p className="mt-2 text-sm">{profile.bio}</p>
           </div>
 
-          {/* STATS */}
-          <div className="grid md:grid-cols-4 gap-6 mb-6">
-
-            <div className="p-6 rounded-2xl bg-[#0f172a]/60 border border-white/10">
+          <div className="mb-6 grid gap-6 md:grid-cols-4">
+            <div className="rounded-2xl border border-white/10 bg-[#0f172a]/60 p-6">
               <p>Developer Score</p>
               <h1 className="text-4xl font-bold">{score}</h1>
-              <p className="text-indigo-400 text-sm">{level}</p>
+              <p className="text-sm text-indigo-400">{level}</p>
             </div>
 
-            <div className="p-6 rounded-2xl bg-[#0f172a]/60 border border-white/10">
+            <div className="rounded-2xl border border-white/10 bg-[#0f172a]/60 p-6">
               <p>Repositories</p>
               <h2 className="text-3xl">{repos.length}</h2>
             </div>
 
-            <div className="p-6 rounded-2xl bg-[#0f172a]/60 border border-white/10">
+            <div className="rounded-2xl border border-white/10 bg-[#0f172a]/60 p-6">
               <p>Followers</p>
               <h2 className="text-3xl">{profile.followers}</h2>
             </div>
 
-            <div className="p-6 rounded-2xl bg-[#0f172a]/60 border border-white/10">
+            <div className="rounded-2xl border border-white/10 bg-[#0f172a]/60 p-6">
               <p>Total Stars</p>
               <h2 className="text-3xl">
                 {repos.reduce((a, r) => a + r.stargazers_count, 0)}
               </h2>
             </div>
-
           </div>
 
-          {/* CHARTS */}
-          <div className="grid md:grid-cols-2 gap-6">
-
-            <div className="p-6 rounded-2xl bg-[#0f172a]/80 border border-white/10">
+          <div className="grid gap-6 md:grid-cols-2">
+            <div className="rounded-2xl border border-white/10 bg-[#0f172a]/80 p-6">
               <h2 className="mb-4">Languages</h2>
               <LanguageChart repos={repos} />
             </div>
 
-            <div className="p-6 rounded-2xl bg-[#0f172a]/80 border border-white/10">
+            <div className="rounded-2xl border border-white/10 bg-[#0f172a]/80 p-6">
               <h2 className="mb-4">Skills</h2>
               <RadarChartBox repos={repos} />
             </div>
 
-            <div className="col-span-2 p-6 rounded-2xl bg-[#0f172a]/80 border border-white/10">
+            <div className="col-span-2 rounded-2xl border border-white/10 bg-[#0f172a]/80 p-6">
               <h2 className="mb-4">Activity</h2>
               <ActivityChart repos={repos} />
             </div>
-
           </div>
         </>
-      )}
-
-      {showLogin && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
-          <div className="w-full max-w-md rounded-3xl border border-white/10 bg-[#0f172a] p-6 shadow-2xl shadow-black/40">
-            <div className="mb-5">
-              <p className="text-xs uppercase tracking-[0.3em] text-gray-500">Login</p>
-              <h3 className="mt-2 text-2xl font-semibold text-white">Sign in to continue</h3>
-              <p className="mt-2 text-sm text-gray-400">
-                Ye local session login hai. Analysis aur history tabhi unlock hogi.
-              </p>
-            </div>
-
-            <form className="space-y-4" onSubmit={handleLogin}>
-              <div>
-                <label className="mb-2 block text-sm text-gray-300">Username</label>
-                <input
-                  value={loginForm.username}
-                  onChange={(event) =>
-                    setLoginForm((prev) => ({ ...prev, username: event.target.value }))
-                  }
-                  className="w-full rounded-xl border border-white/10 bg-[#1e293b] px-4 py-3 text-white outline-none focus:border-indigo-400"
-                  placeholder="Enter your name"
-                />
-              </div>
-
-              <div>
-                <label className="mb-2 block text-sm text-gray-300">Password</label>
-                <input
-                  type="password"
-                  value={loginForm.password}
-                  onChange={(event) =>
-                    setLoginForm((prev) => ({ ...prev, password: event.target.value }))
-                  }
-                  className="w-full rounded-xl border border-white/10 bg-[#1e293b] px-4 py-3 text-white outline-none focus:border-indigo-400"
-                  placeholder="Enter a password"
-                />
-              </div>
-
-              <div className="flex gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowLogin(false)}
-                  className="flex-1 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm hover:bg-white/10"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="flex-1 rounded-xl bg-linear-to-r from-indigo-500 to-purple-500 px-4 py-3 text-sm font-medium"
-                >
-                  Login
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
       )}
     </div>
   );

@@ -8,6 +8,8 @@ This folder contains the Express API used by the frontend dashboard. It proxies 
 - Express
 - Axios
 - CORS
+- Cookie parsing for OAuth state cookies
+- Nodemailer for login notification emails
 
 ## Setup
 
@@ -30,6 +32,23 @@ npm start
 ```
 
 The server listens on `http://localhost:5000`.
+
+## Environment Variables
+
+Create a `.env` file in the backend folder with these values:
+
+- `FRONTEND_URL` - frontend URL, usually `http://localhost:5173`
+- `BACKEND_URL` - backend URL, usually `http://localhost:5000`
+- `GITHUB_CLIENT_ID`
+- `GITHUB_CLIENT_SECRET`
+- `GOOGLE_CLIENT_ID`
+- `GOOGLE_CLIENT_SECRET`
+- `EMAIL_HOST`
+- `EMAIL_PORT`
+- `EMAIL_USER`
+- `EMAIL_PASS`
+- `EMAIL_FROM` - optional sender name/address
+- `EMAIL_SECURE` - set to `true` for secure SMTP
 
 ## API Endpoints
 
@@ -55,8 +74,20 @@ Response shape:
 
 Returns a language frequency map built from the user's public repositories.
 
+## Auth Endpoints
+
+### `GET /auth/github`
+
+Starts the GitHub OAuth flow.
+
+### `GET /auth/google`
+
+Starts the Google OAuth flow.
+
+Both callbacks redirect back to the frontend and store the signed-in user in a browser cookie so the dashboard can show the logged-in state.
+
 ## Notes
 
 - Requests are made against the public GitHub REST API.
 - CORS is enabled so the frontend can call the backend from `localhost` during development.
-- There is no `.env`-based GitHub token handling in the current server implementation.
+- Login notifications are emailed after OAuth succeeds, if SMTP credentials are configured.
