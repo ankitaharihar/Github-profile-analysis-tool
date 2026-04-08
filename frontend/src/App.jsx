@@ -37,10 +37,27 @@ const getLevel = (score) => {
 };
 
 export default function App() {
-  const [username, setUsername] = useState("");
+  const [username, setUsername] = useState(() => {
+    try {
+      return localStorage.getItem("lastUsername") || "";
+    } catch {
+      return "";
+    }
+  });
+  const [authUser, setAuthUser] = useState(() => {
+    try {
+      const savedUser = localStorage.getItem("authUser");
+      return savedUser ? JSON.parse(savedUser) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [showLogin, setShowLogin] = useState(false);
+  const [loginForm, setLoginForm] = useState({ username: "", password: "" });
   const [profile, setProfile] = useState(null);
   const [repos, setRepos] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
 
   const [suggestions, setSuggestions] = useState([]);
   const [showDropdown, setShowDropdown] = useState(false);
@@ -51,6 +68,33 @@ export default function App() {
       return [];
     }
   });
+
+  const handleLogin = (event) => {
+    event.preventDefault();
+
+    if (!loginForm.username.trim() || !loginForm.password.trim()) {
+      return;
+    }
+
+    const sessionUser = {
+      username: loginForm.username.trim()
+    };
+
+    setAuthUser(sessionUser);
+    localStorage.setItem("authUser", JSON.stringify(sessionUser));
+    setShowLogin(false);
+    setLoginForm({ username: "", password: "" });
+  };
+
+  const handleSignOut = () => {
+    setAuthUser(null);
+    setShowHistory(false);
+    setProfile(null);
+    setRepos([]);
+    setUsername("");
+    localStorage.removeItem("authUser");
+    localStorage.removeItem("lastUsername");
+  };
 
   // 🔍 SUGGESTIONS
   const fetchSuggestions = async (value) => {
@@ -72,7 +116,7 @@ export default function App() {
 
   // 🔥 FETCH
   const analyzeProfile = async (user = username) => {
-    if (!user) return;
+    if (!user || !authUser) return;
 
     setLoading(true);
     setProfile(null); // 👉 old profile hide
@@ -85,12 +129,14 @@ export default function App() {
 
       setProfile(profileRes.data);
       setRepos(repoRes.data || []);
+      localStorage.setItem("lastUsername", user);
 
       // 🔥 SAVE HISTORY
-      let updated = [user, ...history.filter(u => u !== user)];
-      updated = updated.slice(0, 5);
-      setHistory(updated);
-      localStorage.setItem("history", JSON.stringify(updated));
+      setHistory((prevHistory) => {
+        const updated = [user, ...prevHistory.filter((item) => item !== user)].slice(0, 5);
+        localStorage.setItem("history", JSON.stringify(updated));
+        return updated;
+      });
 
     } catch (err) {
       console.log(err);
@@ -104,9 +150,47 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#020617] text-white px-6 py-10">
+      <div className="sticky top-4 z-40 mx-auto mb-8 flex w-full max-w-6xl items-center justify-between rounded-2xl border border-white/10 bg-[#0f172a]/90 px-4 py-3 shadow-xl shadow-black/30 backdrop-blur">
+        <div>
+          <p className="text-xs uppercase tracking-[0.3em] text-gray-400">Home</p>
+          <h2 className="text-sm font-semibold text-gray-100">
+            Search profiles, open history, and reuse past searches
+          </h2>
+          {authUser && (
+            <p className="mt-1 text-xs text-emerald-300">
+              Signed in as {authUser.username}
+            </p>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowHistory((value) => !value)}
+            className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm hover:bg-white/10"
+          >
+            {showHistory ? "Close history" : "History"}
+          </button>
+
+          {!authUser ? (
+            <button
+              onClick={() => setShowLogin(true)}
+              className="rounded-full bg-linear-to-r from-indigo-500 to-purple-500 px-4 py-2 text-sm font-medium shadow-lg shadow-indigo-500/20"
+            >
+              Login
+            </button>
+          ) : (
+            <button
+              onClick={handleSignOut}
+              className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm hover:bg-white/10"
+            >
+              Sign Out
+            </button>
+          )}
+        </div>
+      </div>
 
       {/* TITLE */}
-      <h1 className="text-4xl text-center font-bold bg-gradient-to-r from-indigo-400 to-pink-400 bg-clip-text text-transparent mb-6">
+      <h1 className="text-4xl text-center font-bold bg-linear-to-r from-indigo-400 to-pink-400 bg-clip-text text-transparent mb-6">
         GitHub Intelligence Pro
       </h1>
 
@@ -123,32 +207,53 @@ export default function App() {
             onFocus={() => setShowDropdown(true)}
             onKeyDown={(e) => e.key === "Enter" && analyzeProfile()}
             placeholder="Enter GitHub username"
+            disabled={!authUser}
             className="w-96 px-4 py-2 rounded-lg bg-[#1e293b] border border-white/10"
           />
 
           <button
             onClick={() => analyzeProfile()}
-            className="px-5 py-2 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-lg"
+            disabled={!authUser}
+            className="px-5 py-2 bg-linear-to-r from-indigo-500 to-purple-500 rounded-lg"
           >
             {loading ? "Loading..." : "Analyze"}
           </button>
         </div>
 
+        {!authUser && (
+          <div className="w-full max-w-4xl rounded-2xl border border-dashed border-white/10 bg-[#0f172a]/40 p-4 text-sm text-gray-300">
+            Search aur history use karne ke liye pehle Login button dabao.
+          </div>
+        )}
+
         {/* HISTORY */}
-        {history.length > 0 && (
-          <div className="flex gap-2 flex-wrap justify-center">
-            {history.map((item, i) => (
-              <button
-                key={i}
-                onClick={() => {
-                  setUsername(item);
-                  analyzeProfile(item);
-                }}
-                className="px-3 py-1 text-sm bg-white/5 border border-white/10 rounded-full hover:bg-indigo-500/20"
-              >
-                {item}
-              </button>
-            ))}
+        {showHistory && history.length > 0 && (
+          <div className="w-full max-w-4xl rounded-2xl border border-white/10 bg-[#0f172a]/70 p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold tracking-wide text-gray-200">Recent searches</h3>
+              <span className="text-xs text-gray-500">Stored locally in your browser</span>
+            </div>
+
+            <div className="flex gap-2 flex-wrap">
+              {history.map((item) => (
+                <button
+                  key={item}
+                  onClick={() => {
+                    setUsername(item);
+                    analyzeProfile(item);
+                  }}
+                  className="px-3 py-1 text-sm bg-white/5 border border-white/10 rounded-full hover:bg-indigo-500/20"
+                >
+                  {item}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {showHistory && history.length === 0 && (
+          <div className="w-full max-w-4xl rounded-2xl border border-dashed border-white/10 bg-[#0f172a]/40 p-4 text-sm text-gray-400">
+            No search history yet.
           </div>
         )}
 
@@ -161,6 +266,7 @@ export default function App() {
                 onClick={() => {
                   setUsername(user.login);
                   setShowDropdown(false);
+                  analyzeProfile(user.login);
                 }}
                 className="flex items-center gap-3 p-3 hover:bg-indigo-500/20 cursor-pointer"
               >
@@ -233,6 +339,63 @@ export default function App() {
 
           </div>
         </>
+      )}
+
+      {showLogin && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+          <div className="w-full max-w-md rounded-3xl border border-white/10 bg-[#0f172a] p-6 shadow-2xl shadow-black/40">
+            <div className="mb-5">
+              <p className="text-xs uppercase tracking-[0.3em] text-gray-500">Login</p>
+              <h3 className="mt-2 text-2xl font-semibold text-white">Sign in to continue</h3>
+              <p className="mt-2 text-sm text-gray-400">
+                Ye local session login hai. Analysis aur history tabhi unlock hogi.
+              </p>
+            </div>
+
+            <form className="space-y-4" onSubmit={handleLogin}>
+              <div>
+                <label className="mb-2 block text-sm text-gray-300">Username</label>
+                <input
+                  value={loginForm.username}
+                  onChange={(event) =>
+                    setLoginForm((prev) => ({ ...prev, username: event.target.value }))
+                  }
+                  className="w-full rounded-xl border border-white/10 bg-[#1e293b] px-4 py-3 text-white outline-none focus:border-indigo-400"
+                  placeholder="Enter your name"
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm text-gray-300">Password</label>
+                <input
+                  type="password"
+                  value={loginForm.password}
+                  onChange={(event) =>
+                    setLoginForm((prev) => ({ ...prev, password: event.target.value }))
+                  }
+                  className="w-full rounded-xl border border-white/10 bg-[#1e293b] px-4 py-3 text-white outline-none focus:border-indigo-400"
+                  placeholder="Enter a password"
+                />
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowLogin(false)}
+                  className="flex-1 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm hover:bg-white/10"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 rounded-xl bg-linear-to-r from-indigo-500 to-purple-500 px-4 py-3 text-sm font-medium"
+                >
+                  Login
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   );
