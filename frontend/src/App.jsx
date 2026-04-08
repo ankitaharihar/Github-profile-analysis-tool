@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import axios from "axios";
 
 import {
@@ -85,9 +85,21 @@ const getLoginNotice = () => {
   }
 
   if (error) {
+    const friendlyErrors = {
+      github_config_missing: "GitHub OAuth env missing",
+      google_config_missing: "Google OAuth env missing",
+      linkedin_config_missing: "LinkedIn OAuth env missing",
+      github_state_mismatch: "GitHub login state mismatch",
+      google_state_mismatch: "Google login state mismatch",
+      linkedin_state_mismatch: "LinkedIn login state mismatch",
+      github_callback_failed: "GitHub callback failed",
+      google_callback_failed: "Google callback failed",
+      linkedin_callback_failed: "LinkedIn callback failed",
+    };
+
     return {
       type: "error",
-      text: `Login failed: ${error}`,
+      text: friendlyErrors[error] || `Login failed: ${error}`,
     };
   }
 
@@ -97,6 +109,7 @@ const getLoginNotice = () => {
 export default function App() {
   const [authUser, setAuthUser] = useState(getAuthUser);
   const [loginNotice] = useState(getLoginNotice);
+  const [oauthConfig, setOauthConfig] = useState({ github: false, google: false, linkedin: false });
   const [username, setUsername] = useState(() => {
     try {
       return localStorage.getItem("lastUsername") || "";
@@ -118,7 +131,22 @@ export default function App() {
     }
   });
 
+  useEffect(() => {
+    const loadOauthConfig = async () => {
+      try {
+        const response = await axios.get(`${API_BASE_URL}/auth/config`);
+        setOauthConfig(response.data);
+      } catch (error) {
+        console.log(error);
+      }
+    };
+
+    loadOauthConfig();
+  }, []);
+
   const startOAuthLogin = (provider) => {
+    if (!oauthConfig[provider]) return;
+
     window.location.href = `${API_BASE_URL}/auth/${provider}`;
   };
 
@@ -213,27 +241,19 @@ export default function App() {
             {showHistory ? "Close history" : "History"}
           </button>
 
-          {!authUser ? (
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={() => startOAuthLogin("github")}
-                className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm hover:bg-white/10"
-              >
-                Login with GitHub
-              </button>
-              <button
-                onClick={() => startOAuthLogin("google")}
-                className="rounded-full bg-linear-to-r from-indigo-500 to-purple-500 px-4 py-2 text-sm font-medium shadow-lg shadow-indigo-500/20"
-              >
-                Login with Google
-              </button>
-            </div>
-          ) : (
+          {authUser ? (
             <button
               onClick={handleSignOut}
               className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm hover:bg-white/10"
             >
               Sign Out
+            </button>
+          ) : (
+            <button
+              onClick={() => startOAuthLogin("github")}
+              className="rounded-full bg-linear-to-r from-indigo-500 to-purple-500 px-4 py-2 text-sm font-medium shadow-lg shadow-indigo-500/20"
+            >
+              Login
             </button>
           )}
         </div>
@@ -254,6 +274,67 @@ export default function App() {
       <h1 className="mb-6 text-center text-4xl font-bold bg-linear-to-r from-indigo-400 to-pink-400 bg-clip-text text-transparent">
         GitHub Intelligence Pro
       </h1>
+
+      {!authUser && (
+        <div className="mx-auto mb-8 w-full max-w-4xl rounded-3xl border border-white/10 bg-[#0f172a]/80 p-6 shadow-2xl shadow-black/30">
+          <div className="mb-4">
+            <p className="text-xs uppercase tracking-[0.3em] text-gray-500">Sign In</p>
+            <h3 className="mt-2 text-2xl font-semibold text-white">
+              Choose a provider to continue
+            </h3>
+            <p className="mt-2 text-sm text-gray-400">
+              Real OAuth login from GitHub, Google, or LinkedIn. Login ke baad history aur search unlock hoga.
+            </p>
+          </div>
+
+          <div className="mb-4 flex flex-wrap gap-2 text-xs">
+            <span className={`rounded-full px-3 py-1 ${oauthConfig.github ? "bg-emerald-500/15 text-emerald-300" : "bg-red-500/15 text-red-300"}`}>
+              GitHub {oauthConfig.github ? "ready" : "not configured"}
+            </span>
+            <span className={`rounded-full px-3 py-1 ${oauthConfig.google ? "bg-emerald-500/15 text-emerald-300" : "bg-red-500/15 text-red-300"}`}>
+              Google {oauthConfig.google ? "ready" : "not configured"}
+            </span>
+            <span className={`rounded-full px-3 py-1 ${oauthConfig.linkedin ? "bg-emerald-500/15 text-emerald-300" : "bg-red-500/15 text-red-300"}`}>
+              LinkedIn {oauthConfig.linkedin ? "ready" : "not configured"}
+            </span>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-3">
+            <button
+              onClick={() => startOAuthLogin("github")}
+              disabled={!oauthConfig.github}
+              className="rounded-2xl border border-white/10 bg-[#111827] px-4 py-4 text-left hover:border-indigo-400/40 hover:bg-[#172033] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <div className="text-sm font-semibold text-white">Continue with GitHub</div>
+              <div className="mt-1 text-xs text-gray-400">{oauthConfig.github ? "Developer login" : "Not configured yet"}</div>
+            </button>
+
+            <button
+              onClick={() => startOAuthLogin("google")}
+              disabled={!oauthConfig.google}
+              className="rounded-2xl border border-white/10 bg-[#111827] px-4 py-4 text-left hover:border-indigo-400/40 hover:bg-[#172033] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <div className="text-sm font-semibold text-white">Continue with Google</div>
+              <div className="mt-1 text-xs text-gray-400">{oauthConfig.google ? "Fast account access" : "Not configured yet"}</div>
+            </button>
+
+            <button
+              onClick={() => startOAuthLogin("linkedin")}
+              disabled={!oauthConfig.linkedin}
+              className="rounded-2xl border border-white/10 bg-[#111827] px-4 py-4 text-left hover:border-indigo-400/40 hover:bg-[#172033] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <div className="text-sm font-semibold text-white">Continue with LinkedIn</div>
+              <div className="mt-1 text-xs text-gray-400">{oauthConfig.linkedin ? "Professional profile login" : "Not configured yet"}</div>
+            </button>
+          </div>
+
+          {!oauthConfig.github || !oauthConfig.google || !oauthConfig.linkedin ? (
+            <p className="mt-4 text-xs text-amber-300">
+              OAuth clients are not configured yet. Fill backend `.env` and restart the server.
+            </p>
+          ) : null}
+        </div>
+      )}
 
       <div className="relative mb-10 flex flex-col items-center gap-3">
         <div className="flex gap-3">
@@ -283,7 +364,7 @@ export default function App() {
 
         {!authUser && (
           <div className="w-full max-w-4xl rounded-2xl border border-dashed border-white/10 bg-[#0f172a]/40 p-4 text-sm text-gray-300">
-            Search aur history use karne ke liye GitHub ya Google login karo.
+            Search aur history use karne ke liye pehle login karo.
           </div>
         )}
 

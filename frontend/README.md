@@ -19,7 +19,7 @@ This is the React + Vite frontend for the GitHub Profile Analysis Tool. It rende
 - Language, skills, and activity charts.
 - Repository file explorer and modal tab view.
 - Search suggestions from GitHub user search.
-- Real login via GitHub and Google OAuth from the backend.
+- Real login via GitHub, Google, and LinkedIn OAuth from the backend.
 - Recent search history protected behind the login state.
 
 ## Setup
@@ -54,6 +54,7 @@ npm run lint
 - The app expects the backend to be running at `http://localhost:5000`.
 - Set `VITE_API_BASE_URL` if your backend runs somewhere else.
 - Repository data is fetched from GitHub API endpoints, so public GitHub rate limits still apply.
+- The login landing section shows three large provider buttons when you are signed out.
 - Main UI code lives in [src/App.jsx](src/App.jsx).
 - Shared chart components live in [src/components/Charts.jsx](src/components/Charts.jsx).
 - The repository file browser lives in [src/components/FileExplorer.jsx](src/components/FileExplorer.jsx) and [src/components/RepoModal.jsx](src/components/RepoModal.jsx).
