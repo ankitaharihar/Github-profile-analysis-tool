@@ -296,6 +296,10 @@ export default function App() {
   const isResultView = Boolean(profile);
   const isHomeView = !isResultView && !showLoginPage && !showHistory;
   const isHistoryView = !isResultView && !showLoginPage && authUser && showHistory;
+  const hasAnyOauthProvider = oauthConfig.github || oauthConfig.google || oauthConfig.linkedin;
+  const authProviderLabel = authUser?.provider
+    ? `${authUser.provider.charAt(0).toUpperCase()}${authUser.provider.slice(1)} Profile`
+    : "Account";
 
   const loginProviders = [
     {
@@ -355,7 +359,6 @@ export default function App() {
 
             {showExploreMenu && (
               <div className="explore-menu absolute left-1/2 top-full z-50 mt-3 w-88 -translate-x-1/2 overflow-hidden rounded-3xl border border-white/10 bg-[#111827] p-4 shadow-2xl shadow-black/50">
-                  setLanguageData([]);
                 <div className="text-xs uppercase tracking-[0.22em] text-slate-500">
                   What this app includes
                 </div>
@@ -405,7 +408,7 @@ export default function App() {
                     }
                     setShowLoginPage(true);
                   }}
-                  disabled={!authUser && !oauthConfig.github}
+                  disabled={!authUser && !hasAnyOauthProvider}
                   className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition ${
                     authUser
                       ? "text-slate-200 hover:bg-white/5"
@@ -441,7 +444,7 @@ export default function App() {
                     {showProfileMenu && (
                       <div className="profile-menu absolute right-0 top-full z-50 mt-3 w-64 overflow-hidden rounded-2xl border border-white/10 bg-[#111827] p-2 shadow-2xl shadow-black/50">
                         <div className="px-3 py-2 text-xs uppercase tracking-[0.18em] text-slate-500">
-                          GitHub Profile
+                          {authProviderLabel}
                         </div>
                         <div className="flex items-center gap-3 rounded-xl px-3 py-2">
                           <img
