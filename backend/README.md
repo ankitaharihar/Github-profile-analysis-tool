@@ -43,8 +43,6 @@ Create a `.env` file in the backend folder with these values:
 - `GITHUB_CLIENT_SECRET`
 - `GOOGLE_CLIENT_ID`
 - `GOOGLE_CLIENT_SECRET`
-- `LINKEDIN_CLIENT_ID`
-- `LINKEDIN_CLIENT_SECRET`
 - `EMAIL_HOST`
 - `EMAIL_PORT`
 - `EMAIL_USER`
@@ -85,10 +83,6 @@ Starts the GitHub OAuth flow.
 ### `GET /auth/google`
 
 Starts the Google OAuth flow.
-
-### `GET /auth/linkedin`
-
-Starts the LinkedIn OAuth flow.
 
 All callbacks redirect back to the frontend and store the signed-in user in a browser cookie so the dashboard can show the logged-in state.
 

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import "./App.css";
 
@@ -9,6 +9,7 @@ import {
 } from "./components/Charts";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
+const TRENDING_USERS = ["torvalds", "gaearon", "sindresorhus", "yyx990803", "vercel"];
 
 const calculateScore = (profile, repos) => {
   if (!profile || !repos) return 0;
@@ -36,6 +37,53 @@ const getLevel = (score) => {
   if (score > 60) return "🔥 Strong";
   if (score > 40) return "⚡ Intermediate";
   return "🌱 Beginner";
+};
+
+const getScoreTone = (score) => {
+  if (score >= 70) {
+    return { label: "Strong", color: "#22c55e", textClass: "text-emerald-300" };
+  }
+
+  if (score >= 45) {
+    return { label: "Average", color: "#f59e0b", textClass: "text-amber-300" };
+  }
+
+  return { label: "Beginner", color: "#ef4444", textClass: "text-rose-300" };
+};
+
+const buildAiInsights = (profile, repos, score) => {
+  if (!profile || repos.length === 0) return [];
+
+  const totalStars = repos.reduce((acc, repo) => acc + (repo.stargazers_count || 0), 0);
+  const recentRepos = repos.filter((repo) => {
+    const days = (Date.now() - new Date(repo.updated_at)) / (1000 * 60 * 60 * 24);
+    return days < 30;
+  }).length;
+  const languageMap = {};
+
+  repos.forEach((repo) => {
+    if (repo.language) {
+      languageMap[repo.language] = (languageMap[repo.language] || 0) + 1;
+    }
+  });
+
+  const topLanguage = Object.entries(languageMap).sort((a, b) => b[1] - a[1])[0]?.[0];
+  const consistency = recentRepos >= 4 ? "high" : recentRepos >= 2 ? "moderate" : "low";
+
+  return [
+    topLanguage
+      ? `Strong signal in ${topLanguage}. ${Math.round((languageMap[topLanguage] / repos.length) * 100)}% repos use it.`
+      : "Mixed language profile with no single dominant stack yet.",
+    score >= 65
+      ? "Overall profile health is strong with balanced visibility and repo quality."
+      : "Profile can improve with pinned projects and clearer README storytelling.",
+    consistency === "high"
+      ? `Consistency is excellent: ${recentRepos} repos updated in the last 30 days.`
+      : `Consistency is ${consistency}. Try weekly commits to improve momentum signals.`,
+    totalStars >= 100
+      ? `Community traction looks solid with ${totalStars} stars across public repositories.`
+      : "Focus on one standout repository to improve discoverability and stars.",
+  ];
 };
 
 const readCookie = (name) => {
@@ -89,13 +137,10 @@ const getLoginNotice = () => {
     const friendlyErrors = {
       github_config_missing: "GitHub OAuth env missing",
       google_config_missing: "Google OAuth env missing",
-      linkedin_config_missing: "LinkedIn OAuth env missing",
       github_state_mismatch: "GitHub login state mismatch",
       google_state_mismatch: "Google login state mismatch",
-      linkedin_state_mismatch: "LinkedIn login state mismatch",
       github_callback_failed: "GitHub callback failed",
       google_callback_failed: "Google callback failed",
-      linkedin_callback_failed: "LinkedIn callback failed",
     };
 
     return {
@@ -110,7 +155,7 @@ const getLoginNotice = () => {
 export default function App() {
   const [authUser, setAuthUser] = useState(getAuthUser);
   const [loginNotice, setLoginNotice] = useState(getLoginNotice);
-  const [oauthConfig, setOauthConfig] = useState({ github: false, google: false, linkedin: false });
+  const [oauthConfig, setOauthConfig] = useState({ github: false, google: false });
   const [username, setUsername] = useState("");
   const [profile, setProfile] = useState(null);
   const [repos, setRepos] = useState([]);
@@ -125,6 +170,8 @@ export default function App() {
   const [showDropdown, setShowDropdown] = useState(false);
   const profileMenuRef = useRef(null);
   const exploreMenuRef = useRef(null);
+  const resultSectionRef = useRef(null);
+  const suggestTimerRef = useRef(null);
   const [history, setHistory] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem("history")) || [];
@@ -179,6 +226,20 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!username.trim()) {
+      setSuggestions([]);
+      return;
+    }
+
+    window.clearTimeout(suggestTimerRef.current);
+    suggestTimerRef.current = window.setTimeout(() => {
+      fetchSuggestions(username.trim());
+    }, 280);
+
+    return () => window.clearTimeout(suggestTimerRef.current);
+  }, [username]);
+
   const startOAuthLogin = (provider) => {
     if (!oauthConfig[provider]) return;
 
@@ -210,9 +271,7 @@ export default function App() {
     }
 
     try {
-      const res = await axios.get(
-        `https://api.github.com/search/users?q=${value}`
-      );
+      const res = await axios.get(`https://api.github.com/search/users?q=${value}&per_page=8`);
       setSuggestions(res.data.items.slice(0, 5));
       setShowDropdown(true);
     } catch (err) {
@@ -259,7 +318,11 @@ export default function App() {
   };
 
   const analyzeProfile = async (user = username) => {
-    if (!user) return;
+    const normalizedUser = user.trim();
+
+    if (!normalizedUser) return;
+
+    setUsername(normalizedUser);
 
     setLoading(true);
     setError("");
@@ -269,8 +332,8 @@ export default function App() {
 
     try {
       const [profileRes, repoRes] = await Promise.all([
-        axios.get(`https://api.github.com/users/${user}`),
-        axios.get(`https://api.github.com/users/${user}/repos?per_page=100`)
+        axios.get(`https://api.github.com/users/${normalizedUser}`),
+        axios.get(`https://api.github.com/users/${normalizedUser}/repos?per_page=100`)
       ]);
 
       setProfile(profileRes.data);
@@ -279,13 +342,17 @@ export default function App() {
       setLanguageData(await collectLanguageData(repoList));
 
       setHistory((prevHistory) => {
-        const updated = [user, ...prevHistory.filter((item) => item !== user)].slice(0, 5);
+        const updated = [normalizedUser, ...prevHistory.filter((item) => item !== normalizedUser)].slice(0, 6);
         localStorage.setItem("history", JSON.stringify(updated));
         return updated;
       });
+
+      window.requestAnimationFrame(() => {
+        resultSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
     } catch (err) {
       console.log(err);
-      setError("User not found or GitHub API limit reached. Please try another username in a moment.");
+      setError("User not found. Check the username and try again.");
     } finally {
       setLoading(false);
     }
@@ -293,10 +360,16 @@ export default function App() {
 
   const score = calculateScore(profile, repos);
   const level = getLevel(score);
+  const scoreTone = getScoreTone(score);
+  const topRepos = useMemo(
+    () => [...repos].sort((a, b) => b.stargazers_count - a.stargazers_count).slice(0, 5),
+    [repos]
+  );
+  const aiInsights = useMemo(() => buildAiInsights(profile, repos, score), [profile, repos, score]);
   const isResultView = Boolean(profile);
   const isHomeView = !isResultView && !showLoginPage && !showHistory;
   const isHistoryView = !isResultView && !showLoginPage && authUser && showHistory;
-  const hasAnyOauthProvider = oauthConfig.github || oauthConfig.google || oauthConfig.linkedin;
+  const hasAnyOauthProvider = oauthConfig.github || oauthConfig.google;
   const authProviderLabel = authUser?.provider
     ? `${authUser.provider.charAt(0).toUpperCase()}${authUser.provider.slice(1)} Profile`
     : "Account";
@@ -311,11 +384,6 @@ export default function App() {
       key: "google",
       label: "Sign in with Google",
       subtitle: "Use your Google account securely",
-    },
-    {
-      key: "linkedin",
-      label: "Continue with LinkedIn",
-      subtitle: "Use your professional profile",
     },
   ];
 
@@ -394,9 +462,9 @@ export default function App() {
                   setShowHistory(false);
                   setShowProfileMenu(false);
                 }}
-                className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white hover:bg-white/10"
+                className="rounded-full border border-fuchsia-400/20 bg-white/5 px-4 py-2 text-sm font-semibold text-white transition hover:border-fuchsia-300/45 hover:bg-white/10"
               >
-                Search another profile
+                New Search
               </button>
             ) : (
               <>
@@ -515,10 +583,10 @@ export default function App() {
             </h1>
 
             <p className="mt-7 max-w-4xl text-base leading-8 text-slate-300 md:text-[1.3rem] md:leading-8">
-              Analyze profiles, track contributions, and gain deep insights into GitHub repositories with our advanced analytics platform.
+              Analyze profiles, repos, and developer momentum in seconds.
             </p>
 
-            <div className="mt-9 w-full max-w-5xl rounded-[1.6rem] border border-fuchsia-500/30 bg-[#1a2337]/95 p-2.5 shadow-[0_0_28px_rgba(236,72,153,0.34)] md:p-3">
+            <div className="hero-search-shell mt-9 w-full max-w-5xl rounded-[1.6rem] border border-fuchsia-500/30 bg-[#1a2337]/95 p-2.5 shadow-[0_0_28px_rgba(236,72,153,0.34)] md:p-3">
               <div className="flex flex-col gap-2.5 md:flex-row md:items-stretch">
                 <div className="relative flex-1">
                   <div className="pointer-events-none absolute left-5 top-1/2 -translate-y-1/2 text-slate-500">
@@ -533,7 +601,6 @@ export default function App() {
                     value={username}
                     onChange={(event) => {
                       setUsername(event.target.value);
-                      fetchSuggestions(event.target.value);
                     }}
                     onFocus={() => setShowDropdown(true)}
                     onKeyDown={(event) => event.key === "Enter" && analyzeProfile()}
@@ -556,11 +623,25 @@ export default function App() {
               </p>
 
               {loading && (
-                <p className="mt-3 text-sm text-indigo-200">Fetching profile data...</p>
+                <div className="mt-4 rounded-2xl border border-white/10 bg-[#101a2e] p-4 text-left">
+                  <div className="flex items-center gap-3 text-sm text-indigo-200">
+                    <span className="loading-spinner" />
+                    <span>Analyzing profile and repository metadata...</span>
+                  </div>
+                  <div className="mt-4 grid gap-2">
+                    <div className="skeleton-line h-3 w-2/3" />
+                    <div className="skeleton-line h-3 w-full" />
+                    <div className="skeleton-line h-3 w-4/5" />
+                  </div>
+                </div>
               )}
 
               {error && (
-                <p className="mt-3 text-sm text-rose-300">{error}</p>
+                <div className="error-panel mt-4 rounded-2xl border border-rose-400/30 bg-rose-500/10 p-4 text-left">
+                  <div className="text-sm font-semibold text-rose-200">User not found</div>
+                  <div className="mt-1 text-sm text-rose-100/90">{error}</div>
+                  <div className="mt-2 text-xs text-rose-100/80">Try verified usernames like torvalds, gaearon, or vercel.</div>
+                </div>
               )}
 
               {showDropdown && suggestions.length > 0 && (
@@ -583,23 +664,50 @@ export default function App() {
               )}
 
               {!authUser && (
-                <div className="mt-4 space-y-3">
+                <div className="mt-4">
                   <div className="text-sm text-slate-400">
                     Sign in to save and view search history.
                   </div>
-
-                  {oauthConfig.google && (
-                    <button
-                      type="button"
-                      onClick={() => startOAuthLogin("google")}
-                      className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-4 py-2 text-sm font-semibold text-slate-100 transition hover:bg-white/10"
-                    >
-                      <span className="h-2.5 w-2.5 rounded-full bg-rose-400" />
-                      <span>Sign in with Google</span>
-                    </button>
-                  )}
                 </div>
               )}
+
+              <div className="mt-4 grid gap-3 text-left md:grid-cols-2">
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Recent searches</div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {history.length > 0 ? (
+                      history.slice(0, 5).map((item) => (
+                        <button
+                          key={`recent-${item}`}
+                          type="button"
+                          onClick={() => analyzeProfile(item)}
+                          className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-200 transition hover:border-fuchsia-400/45 hover:bg-white/10"
+                        >
+                          {item}
+                        </button>
+                      ))
+                    ) : (
+                      <span className="text-xs text-slate-500">No searches yet</span>
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Trending users</div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {TRENDING_USERS.map((item) => (
+                      <button
+                        key={`trend-${item}`}
+                        type="button"
+                        onClick={() => analyzeProfile(item)}
+                        className="rounded-full border border-sky-400/20 bg-sky-500/10 px-3 py-1 text-xs text-sky-200 transition hover:border-sky-300/45 hover:bg-sky-500/15"
+                      >
+                        {item}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
             </div>
 
           </div>
@@ -649,9 +757,7 @@ export default function App() {
                         <span className={`h-2.5 w-2.5 rounded-full ${
                           provider.key === "github"
                             ? "bg-sky-400"
-                            : provider.key === "google"
-                              ? "bg-rose-400"
-                              : "bg-indigo-400"
+                            : "bg-rose-400"
                         }`} />
                         <div className="text-base font-semibold text-white">{provider.label}</div>
                       </div>
@@ -660,7 +766,7 @@ export default function App() {
                   ))}
                 </div>
 
-                {!oauthConfig.github && !oauthConfig.google && !oauthConfig.linkedin && (
+                {!oauthConfig.github && !oauthConfig.google && (
                   <div className="mt-4 rounded-2xl border border-amber-400/20 bg-amber-500/10 p-4 text-sm text-amber-100">
                     OAuth is not configured on the backend yet. Add your client IDs and secrets in <span className="font-semibold">backend/.env</span>, then restart the backend.
                   </div>
@@ -726,8 +832,8 @@ export default function App() {
       </div>
 
       {profile && (
-        <>
-          <div className="mb-6 rounded-2xl border border-white/10 bg-[#0f172a]/80 p-6">
+        <div ref={resultSectionRef} className="space-y-6">
+          <div className="rounded-2xl border border-white/10 bg-[#0f172a]/80 p-6">
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div className="flex items-center gap-4">
                 <img
@@ -745,7 +851,7 @@ export default function App() {
                 href={profile.html_url}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex w-fit items-center rounded-full border border-white/15 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-white/10"
+                className="view-github-btn inline-flex w-fit items-center rounded-full border border-white/15 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-white/10"
               >
                 View GitHub Profile
               </a>
@@ -755,10 +861,20 @@ export default function App() {
 
             <div className="mt-4 flex flex-wrap gap-2 text-xs text-slate-300">
               {profile.location && (
-                <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">Location: {profile.location}</span>
+                <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">📍 {profile.location}</span>
               )}
               {profile.company && (
-                <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">Company: {profile.company}</span>
+                <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">🏢 {profile.company}</span>
+              )}
+              {profile.blog && (
+                <a
+                  href={profile.blog.startsWith("http") ? profile.blog : `https://${profile.blog}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded-full border border-cyan-400/25 bg-cyan-500/10 px-3 py-1 text-cyan-200 hover:bg-cyan-500/20"
+                >
+                  🔗 Portfolio
+                </a>
               )}
               {profile.public_gists !== undefined && (
                 <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">Public gists: {profile.public_gists}</span>
@@ -769,28 +885,73 @@ export default function App() {
             </div>
           </div>
 
-          <div className="mb-6 grid gap-6 md:grid-cols-4">
-            <div className="rounded-2xl border border-white/10 bg-[#0f172a]/60 p-6">
-              <p>Developer Score</p>
-              <h1 className="text-4xl font-bold">{score}</h1>
-              <p className="text-sm text-indigo-400">{level}</p>
+          <div className="grid gap-6 md:grid-cols-4">
+            <div className="stat-card stat-card--score rounded-2xl border border-white/10 bg-[#0f172a]/60 p-6">
+              <p className="text-sm text-slate-300">Developer Score</p>
+              <div
+                className="score-ring mt-4"
+                style={{
+                  "--score-angle": `${Math.min(score, 100) * 3.6}deg`,
+                  "--score-color": scoreTone.color,
+                }}
+              >
+                <div className="score-ring__inner">
+                  <div className="text-3xl font-bold text-white">{score}</div>
+                  <div className={`text-xs font-semibold ${scoreTone.textClass}`}>{scoreTone.label}</div>
+                </div>
+              </div>
+              <p className="mt-3 text-xs text-slate-400">{level}</p>
             </div>
 
-            <div className="rounded-2xl border border-white/10 bg-[#0f172a]/60 p-6">
-              <p>Repositories</p>
+            <div className="stat-card stat-card--repos rounded-2xl border border-white/10 bg-[#0f172a]/60 p-6">
+              <p className="text-sm text-slate-300">📦 Repositories</p>
               <h2 className="text-3xl">{repos.length}</h2>
             </div>
 
-            <div className="rounded-2xl border border-white/10 bg-[#0f172a]/60 p-6">
-              <p>Followers</p>
+            <div className="stat-card stat-card--followers rounded-2xl border border-white/10 bg-[#0f172a]/60 p-6">
+              <p className="text-sm text-slate-300">👥 Followers</p>
               <h2 className="text-3xl">{profile.followers}</h2>
             </div>
 
-            <div className="rounded-2xl border border-white/10 bg-[#0f172a]/60 p-6">
-              <p>Total Stars</p>
+            <div className="stat-card stat-card--stars rounded-2xl border border-white/10 bg-[#0f172a]/60 p-6">
+              <p className="text-sm text-slate-300">⭐ Total Stars</p>
               <h2 className="text-3xl">
                 {repos.reduce((a, r) => a + r.stargazers_count, 0)}
               </h2>
+            </div>
+          </div>
+
+          <div className="grid gap-6 lg:grid-cols-2">
+            <div className="rounded-2xl border border-fuchsia-400/20 bg-[#10172a]/90 p-6">
+              <h2 className="mb-4 text-lg font-semibold text-white">AI Insights</h2>
+              <div className="space-y-2">
+                {aiInsights.map((insight) => (
+                  <div key={insight} className="rounded-xl border border-white/8 bg-white/5 px-3 py-2 text-sm text-slate-200">
+                    {insight}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-cyan-400/20 bg-[#0d1a2b]/90 p-6">
+              <h2 className="mb-4 text-lg font-semibold text-white">Top Repositories</h2>
+              <div className="space-y-2">
+                {topRepos.map((repo) => (
+                  <a
+                    key={repo.id}
+                    href={repo.html_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="top-repo-row flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2 transition hover:bg-white/10"
+                  >
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-semibold text-slate-100">{repo.name}</div>
+                      <div className="text-xs text-slate-400">{repo.language || "Unknown"}</div>
+                    </div>
+                    <div className="ml-3 text-xs text-amber-200">⭐ {repo.stargazers_count}</div>
+                  </a>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -826,7 +987,7 @@ export default function App() {
               <ActivityChart repos={repos} />
             </div>
           </div>
-        </>
+        </div>
       )}
     </div>
   );

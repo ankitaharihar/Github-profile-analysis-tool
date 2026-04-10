@@ -94,7 +94,6 @@ const requireOAuthConfig = (provider, res) => {
   const requiredKeys = {
     github: ["GITHUB_CLIENT_ID", "GITHUB_CLIENT_SECRET"],
     google: ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"],
-    linkedin: ["LINKEDIN_CLIENT_ID", "LINKEDIN_CLIENT_SECRET"],
   };
 
   const missing = (requiredKeys[provider] || []).filter((key) => !process.env[key]);
@@ -110,7 +109,6 @@ const requireOAuthConfig = (provider, res) => {
 const getOAuthConfigStatus = () => ({
   github: Boolean(process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET),
   google: Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET),
-  linkedin: Boolean(process.env.LINKEDIN_CLIENT_ID && process.env.LINKEDIN_CLIENT_SECRET),
 });
 
 const redirectToFrontend = (res, query = {}) => {
@@ -164,29 +162,6 @@ app.get("/auth/google", (req, res) => {
     `&scope=${scope}` +
     `&access_type=offline` +
     `&prompt=consent` +
-    `&state=${state}`;
-
-  res.redirect(url);
-});
-
-app.get("/auth/linkedin", (req, res) => {
-  if (!requireOAuthConfig("linkedin", res)) return;
-
-  const state = buildState();
-  res.cookie(makeStateCookie("linkedin"), state, {
-    ...COOKIE_OPTIONS,
-    httpOnly: true,
-    maxAge: 1000 * 60 * 10,
-  });
-
-  const redirectUri = `${BACKEND_URL}/auth/linkedin/callback`;
-  const scope = encodeURIComponent("openid profile email");
-
-  const url =
-    `https://www.linkedin.com/oauth/v2/authorization?response_type=code` +
-    `&client_id=${process.env.LINKEDIN_CLIENT_ID}` +
-    `&redirect_uri=${encodeURIComponent(redirectUri)}` +
-    `&scope=${scope}` +
     `&state=${state}`;
 
   res.redirect(url);
@@ -332,69 +307,6 @@ app.get("/auth/google/callback", async (req, res) => {
   } catch (err) {
     console.error("Google auth callback error:", err);
     return redirectToFrontend(res, { login_error: "google_callback_failed" });
-  }
-});
-
-app.get("/auth/linkedin/callback", async (req, res) => {
-  try {
-    const { code, state, error } = req.query;
-    const storedState = req.cookies[makeStateCookie("linkedin")];
-
-    res.clearCookie(makeStateCookie("linkedin"), COOKIE_OPTIONS);
-
-    if (error) {
-      return redirectToFrontend(res, { login_error: String(error) });
-    }
-
-    if (!code || !state || !storedState || state !== storedState) {
-      return redirectToFrontend(res, { login_error: "linkedin_state_mismatch" });
-    }
-
-    const tokenResponse = await axios.post(
-      "https://www.linkedin.com/oauth/v2/accessToken",
-      new URLSearchParams({
-        grant_type: "authorization_code",
-        code,
-        redirect_uri: `${BACKEND_URL}/auth/linkedin/callback`,
-        client_id: process.env.LINKEDIN_CLIENT_ID,
-        client_secret: process.env.LINKEDIN_CLIENT_SECRET,
-      }).toString(),
-      {
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-      }
-    );
-
-    const accessToken = tokenResponse.data.access_token;
-
-    if (!accessToken) {
-      return redirectToFrontend(res, { login_error: "linkedin_token_missing" });
-    }
-
-    const profileResponse = await axios.get("https://api.linkedin.com/v2/userinfo", {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-    });
-
-    const profile = profileResponse.data;
-    const user = {
-      provider: "linkedin",
-      id: String(profile.sub || profile.id || profile.email),
-      login: profile.email?.split("@")[0] || profile.name || profile.given_name || "linkedin-user",
-      name: profile.name || [profile.given_name, profile.family_name].filter(Boolean).join(" ") || profile.email,
-      email: profile.email || "",
-      avatarUrl: profile.picture || "",
-    };
-
-    await sendLoginEmail(user);
-    storeAuthUser(res, user);
-
-    return redirectToFrontend(res, { login_success: "linkedin" });
-  } catch (err) {
-    console.error("LinkedIn auth callback error:", err);
-    return redirectToFrontend(res, { login_error: "linkedin_callback_failed" });
   }
 });
 
