@@ -17,6 +17,9 @@ This is the React + Vite frontend for the GitHub Profile Analysis Tool. It rende
 - GitHub username lookup with profile analysis.
 - Developer score and summary cards for followers, repositories, and stars.
 - Language, skills, and activity charts.
+- Repository explorer controls: search, language filter, sort options, and fork include/exclude toggle.
+- Repository quick stats in the dashboard view (filtered repo count, average stars, fork ratio).
+- One-click CSV export for the currently filtered repository list.
 - Repository file explorer and modal tab view.
 - Search suggestions from GitHub user search.
 - Real login via GitHub and Google OAuth from the backend.

@@ -1,4 +1,6 @@
-require("dotenv").config();
+const path = require("path");
+const fs = require("fs/promises");
+require("dotenv").config({ path: path.join(__dirname, ".env") });
 
 const crypto = require("crypto");
 const express = require("express");
@@ -6,12 +8,187 @@ const axios = require("axios");
 const cors = require("cors");
 const cookieParser = require("cookie-parser");
 const nodemailer = require("nodemailer");
+const Stripe = require("stripe");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
 const BACKEND_URL = process.env.BACKEND_URL || `http://localhost:${PORT}`;
 const BASE_URL = "https://api.github.com";
+const stripe = process.env.STRIPE_SECRET_KEY
+  ? new Stripe(process.env.STRIPE_SECRET_KEY)
+  : null;
+const GITHUB_CLIENT_HEADERS = {
+  Accept: "application/vnd.github+json",
+  "X-GitHub-Api-Version": "2022-11-28",
+};
+
+if (process.env.GITHUB_TOKEN) {
+  GITHUB_CLIENT_HEADERS.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
+} else {
+  console.warn("GITHUB_TOKEN is not configured. GitHub API rate limits may be reached quickly.");
+}
+
+const githubClient = axios.create({
+  baseURL: BASE_URL,
+  headers: GITHUB_CLIENT_HEADERS,
+});
+
+const githubCache = new Map();
+const SUBSCRIPTIONS_FILE = path.join(__dirname, "data", "subscriptions.json");
+const AVAILABLE_PLANS = [
+  {
+    id: "free",
+    name: "Free",
+    priceMonthly: 0,
+    features: [
+      "Profile score and repository insights",
+      "Recent search history",
+      "Basic charts and language breakdown",
+    ],
+  },
+  {
+    id: "pro",
+    name: "Pro",
+    priceMonthly: 12,
+    features: [
+      "Advanced filters and smart sorting",
+      "CSV export and richer analytics views",
+      "Priority API performance",
+    ],
+  },
+  {
+    id: "team",
+    name: "Team",
+    priceMonthly: 39,
+    features: [
+      "Shared dashboards and saved views",
+      "Role-based access controls",
+      "Team activity summaries",
+    ],
+  },
+];
+const STRIPE_PRICE_BY_PLAN = {
+  pro: process.env.STRIPE_PRICE_PRO_MONTHLY,
+  team: process.env.STRIPE_PRICE_TEAM_MONTHLY,
+};
+const PLAN_BY_STRIPE_PRICE = Object.entries(STRIPE_PRICE_BY_PLAN).reduce((acc, [planId, priceId]) => {
+  if (priceId) acc[priceId] = planId;
+  return acc;
+}, {});
+
+const readSubscriptions = async () => {
+  try {
+    const raw = await fs.readFile(SUBSCRIPTIONS_FILE, "utf-8");
+    const parsed = JSON.parse(raw);
+    return typeof parsed === "object" && parsed ? parsed : {};
+  } catch (error) {
+    if (error.code === "ENOENT") {
+      await fs.mkdir(path.dirname(SUBSCRIPTIONS_FILE), { recursive: true });
+      await fs.writeFile(SUBSCRIPTIONS_FILE, JSON.stringify({}, null, 2), "utf-8");
+      return {};
+    }
+
+    throw error;
+  }
+};
+
+const writeSubscriptions = async (subscriptions) => {
+  await fs.mkdir(path.dirname(SUBSCRIPTIONS_FILE), { recursive: true });
+  await fs.writeFile(SUBSCRIPTIONS_FILE, JSON.stringify(subscriptions, null, 2), "utf-8");
+};
+
+const upsertSubscription = async (userId, partialSubscription) => {
+  const subscriptions = await readSubscriptions();
+  const previous = subscriptions[userId] || {};
+
+  subscriptions[userId] = {
+    plan: previous.plan || "free",
+    status: previous.status || "active",
+    startedAt: previous.startedAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    ...previous,
+    ...partialSubscription,
+  };
+
+  await writeSubscriptions(subscriptions);
+  return subscriptions[userId];
+};
+
+const getSubscriptionByUserId = async (userId) => {
+  const subscriptions = await readSubscriptions();
+  return subscriptions[userId] || null;
+};
+
+const getUserIdByStripeCustomerId = async (stripeCustomerId) => {
+  if (!stripeCustomerId) return null;
+
+  const subscriptions = await readSubscriptions();
+  return Object.entries(subscriptions).find(([, value]) => value?.stripeCustomerId === stripeCustomerId)?.[0] || null;
+};
+
+const buildStripeSubscriptionSnapshot = (stripeSubscription, fallbackPlan = "free") => {
+  const activePriceId = stripeSubscription?.items?.data?.[0]?.price?.id;
+  const mappedPlan = PLAN_BY_STRIPE_PRICE[activePriceId] || fallbackPlan;
+
+  return {
+    plan: mappedPlan,
+    status: stripeSubscription?.status || "active",
+    stripeCustomerId: stripeSubscription?.customer ? String(stripeSubscription.customer) : undefined,
+    stripeSubscriptionId: stripeSubscription?.id ? String(stripeSubscription.id) : undefined,
+    currentPeriodEnd: stripeSubscription?.current_period_end
+      ? new Date(stripeSubscription.current_period_end * 1000).toISOString()
+      : null,
+    cancelAtPeriodEnd: Boolean(stripeSubscription?.cancel_at_period_end),
+  };
+};
+
+const readAuthUserFromCookie = (req) => {
+  const rawCookie = req.cookies?.oauth_user;
+  if (!rawCookie) return null;
+
+  try {
+    return JSON.parse(rawCookie);
+  } catch {
+    try {
+      return JSON.parse(decodeURIComponent(rawCookie));
+    } catch {
+      return null;
+    }
+  }
+};
+
+const requireAuthUser = (req, res, next) => {
+  const user = readAuthUserFromCookie(req);
+
+  if (!user?.id) {
+    return res.status(401).json({ message: "Authentication required" });
+  }
+
+  req.authUser = user;
+  return next();
+};
+
+const getCachedValue = (key) => {
+  const entry = githubCache.get(key);
+
+  if (!entry) return null;
+
+  if (entry.expiresAt <= Date.now()) {
+    githubCache.delete(key);
+    return null;
+  }
+
+  return entry.value;
+};
+
+const setCachedValue = (key, value, ttlMs) => {
+  githubCache.set(key, {
+    value,
+    expiresAt: Date.now() + ttlMs,
+  });
+};
+
 const COOKIE_OPTIONS = {
   path: "/",
   sameSite: "lax",
@@ -24,7 +201,13 @@ app.use(
     credentials: true,
   })
 );
-app.use(express.json());
+app.use((req, res, next) => {
+  if (req.originalUrl === "/api/billing/stripe/webhook") {
+    return next();
+  }
+
+  return express.json()(req, res, next);
+});
 app.use(cookieParser());
 
 const getMailer = () => {
@@ -118,6 +301,13 @@ const redirectToFrontend = (res, query = {}) => {
   });
 
   return res.redirect(url.toString());
+};
+
+const forwardGitHubError = (res, error, fallbackMessage) => {
+  const status = error.response?.status || 500;
+  const message = error.response?.data?.message || fallbackMessage;
+
+  return res.status(status).json({ message });
 };
 
 app.get("/auth/github", (req, res) => {
@@ -234,6 +424,10 @@ app.get("/auth/github/callback", async (req, res) => {
       avatarUrl: profile.avatar_url,
     };
 
+    await upsertSubscription(user.id, {
+      plan: (await getSubscriptionByUserId(user.id))?.plan || "free",
+      status: "active",
+    });
     await sendLoginEmail(user);
     storeAuthUser(res, user);
 
@@ -300,6 +494,10 @@ app.get("/auth/google/callback", async (req, res) => {
       avatarUrl: profile.picture,
     };
 
+    await upsertSubscription(user.id, {
+      plan: (await getSubscriptionByUserId(user.id))?.plan || "free",
+      status: "active",
+    });
     await sendLoginEmail(user);
     storeAuthUser(res, user);
 
@@ -310,13 +508,53 @@ app.get("/auth/google/callback", async (req, res) => {
   }
 });
 
+app.get("/api/github/search/users", async (req, res) => {
+  try {
+    const { q, per_page = 8 } = req.query;
+    const normalizedQuery = String(q || "").trim();
+    const cacheKey = `search:${normalizedQuery}:${per_page}`;
+
+    const cached = getCachedValue(cacheKey);
+    if (cached) {
+      return res.json(cached);
+    }
+
+    if (!normalizedQuery) {
+      return res.status(400).json({ message: "Query required" });
+    }
+
+    const response = await githubClient.get("/search/users", {
+      params: {
+        q: normalizedQuery,
+        per_page,
+      },
+    });
+
+    setCachedValue(cacheKey, response.data, 2 * 60 * 1000);
+
+    return res.json(response.data);
+  } catch (error) {
+    return forwardGitHubError(res, error, "Failed to search users");
+  }
+});
+
 app.get("/api/github/:username", async (req, res) => {
   try {
     const { username } = req.params;
-    const response = await axios.get(`${BASE_URL}/users/${username}`);
-    res.json(response.data);
-  } catch {
-    res.status(500).json({ message: "User not found" });
+    const cacheKey = `profile:${username}`;
+    const cached = getCachedValue(cacheKey);
+
+    if (cached) {
+      return res.json(cached);
+    }
+
+    const response = await githubClient.get(`/users/${username}`);
+
+    setCachedValue(cacheKey, response.data, 5 * 60 * 1000);
+
+    return res.json(response.data);
+  } catch (error) {
+    return forwardGitHubError(res, error, "User not found");
   }
 });
 
@@ -324,29 +562,49 @@ app.get("/api/github/:username/repos", async (req, res) => {
   try {
     const { username } = req.params;
     const { page = 1, per_page = 10 } = req.query;
+    const cacheKey = `repos:${username}:${page}:${per_page}`;
+    const cached = getCachedValue(cacheKey);
 
-    const response = await axios.get(
-      `${BASE_URL}/users/${username}/repos?page=${page}&per_page=${per_page}&sort=updated`
-    );
+    if (cached) {
+      return res.json(cached);
+    }
 
-    res.json({
+    const response = await githubClient.get(`/users/${username}/repos`, {
+      params: {
+        page,
+        per_page,
+        sort: "updated",
+      },
+    });
+
+    const payload = {
       data: response.data,
       pagination: {
         has_prev: page > 1,
         has_next: response.data.length === Number(per_page),
         total_pages: page + 1,
       },
-    });
-  } catch {
-    res.status(500).json({ message: "Failed to fetch repos" });
+    };
+
+    setCachedValue(cacheKey, payload, 5 * 60 * 1000);
+
+    return res.json(payload);
+  } catch (error) {
+    return forwardGitHubError(res, error, "Failed to fetch repos");
   }
 });
 
 app.get("/api/github/:username/languages", async (req, res) => {
   try {
     const { username } = req.params;
+    const cacheKey = `languages:${username}`;
+    const cached = getCachedValue(cacheKey);
 
-    const repos = await axios.get(`${BASE_URL}/users/${username}/repos`);
+    if (cached) {
+      return res.json(cached);
+    }
+
+    const repos = await githubClient.get(`/users/${username}/repos`);
     const langStats = {};
 
     for (let repo of repos.data) {
@@ -356,9 +614,212 @@ app.get("/api/github/:username/languages", async (req, res) => {
       }
     }
 
-    res.json(langStats);
-  } catch {
-    res.status(500).json({ message: "Failed to fetch languages" });
+    setCachedValue(cacheKey, langStats, 10 * 60 * 1000);
+
+    return res.json(langStats);
+  } catch (error) {
+    return forwardGitHubError(res, error, "Failed to fetch languages");
+  }
+});
+
+app.get("/api/billing/plans", (req, res) => {
+  return res.json({ plans: AVAILABLE_PLANS });
+});
+
+app.get("/api/billing/subscription", requireAuthUser, async (req, res) => {
+  const existing = await getSubscriptionByUserId(req.authUser.id);
+  const subscription = existing || (await upsertSubscription(req.authUser.id, { plan: "free", status: "active" }));
+
+  return res.json({
+    subscription,
+    plan: AVAILABLE_PLANS.find((item) => item.id === subscription.plan) || AVAILABLE_PLANS[0],
+  });
+});
+
+app.post("/api/billing/subscription", requireAuthUser, async (req, res) => {
+  const nextPlan = String(req.body?.plan || "").toLowerCase();
+  const isValidPlan = AVAILABLE_PLANS.some((plan) => plan.id === nextPlan);
+
+  if (!isValidPlan) {
+    return res.status(400).json({ message: "Invalid plan selected" });
+  }
+
+  if (nextPlan !== "free") {
+    return res.status(402).json({ message: "Paid plans require Stripe checkout" });
+  }
+
+  const subscription = await upsertSubscription(req.authUser.id, {
+    plan: nextPlan,
+    status: "active",
+    startedAt: new Date().toISOString(),
+    stripeSubscriptionId: null,
+    cancelAtPeriodEnd: false,
+    currentPeriodEnd: null,
+  });
+
+  return res.json({
+    message: `Plan updated to ${nextPlan}`,
+    subscription,
+    plan: AVAILABLE_PLANS.find((item) => item.id === nextPlan),
+  });
+});
+
+app.post("/api/billing/checkout-session", requireAuthUser, async (req, res) => {
+  if (!stripe) {
+    return res.status(503).json({ message: "Stripe is not configured on the backend" });
+  }
+
+  const selectedPlan = String(req.body?.plan || "").toLowerCase();
+
+  if (!["pro", "team"].includes(selectedPlan)) {
+    return res.status(400).json({ message: "Checkout is supported for pro/team plans only" });
+  }
+
+  const priceId = STRIPE_PRICE_BY_PLAN[selectedPlan];
+  if (!priceId) {
+    return res.status(500).json({ message: `Missing Stripe price ID for ${selectedPlan}` });
+  }
+
+  const existingSubscription = await getSubscriptionByUserId(req.authUser.id);
+
+  const session = await stripe.checkout.sessions.create({
+    mode: "subscription",
+    line_items: [{ price: priceId, quantity: 1 }],
+    customer: existingSubscription?.stripeCustomerId || undefined,
+    customer_email: existingSubscription?.stripeCustomerId ? undefined : req.authUser.email || undefined,
+    success_url: `${FRONTEND_URL}/pricing?checkout=success`,
+    cancel_url: `${FRONTEND_URL}/pricing?checkout=cancel`,
+    metadata: {
+      userId: req.authUser.id,
+      plan: selectedPlan,
+    },
+    subscription_data: {
+      metadata: {
+        userId: req.authUser.id,
+        plan: selectedPlan,
+      },
+    },
+  });
+
+  await upsertSubscription(req.authUser.id, {
+    checkoutSessionId: session.id,
+    stripeCustomerId: typeof session.customer === "string" ? session.customer : existingSubscription?.stripeCustomerId,
+    updatedAt: new Date().toISOString(),
+  });
+
+  return res.json({ id: session.id, url: session.url });
+});
+
+app.post("/api/billing/subscription/cancel", requireAuthUser, async (req, res) => {
+  if (!stripe) {
+    return res.status(503).json({ message: "Stripe is not configured on the backend" });
+  }
+
+  const existing = await getSubscriptionByUserId(req.authUser.id);
+  if (!existing?.stripeSubscriptionId) {
+    return res.status(400).json({ message: "No active paid subscription found" });
+  }
+
+  const stripeSubscription = await stripe.subscriptions.update(existing.stripeSubscriptionId, {
+    cancel_at_period_end: true,
+  });
+
+  const subscription = await upsertSubscription(
+    req.authUser.id,
+    buildStripeSubscriptionSnapshot(stripeSubscription, existing.plan || "pro")
+  );
+
+  return res.json({ message: "Subscription will cancel at period end", subscription });
+});
+
+app.post("/api/billing/subscription/resume", requireAuthUser, async (req, res) => {
+  if (!stripe) {
+    return res.status(503).json({ message: "Stripe is not configured on the backend" });
+  }
+
+  const existing = await getSubscriptionByUserId(req.authUser.id);
+  if (!existing?.stripeSubscriptionId) {
+    return res.status(400).json({ message: "No active paid subscription found" });
+  }
+
+  const stripeSubscription = await stripe.subscriptions.update(existing.stripeSubscriptionId, {
+    cancel_at_period_end: false,
+  });
+
+  const subscription = await upsertSubscription(
+    req.authUser.id,
+    buildStripeSubscriptionSnapshot(stripeSubscription, existing.plan || "pro")
+  );
+
+  return res.json({ message: "Subscription renewal resumed", subscription });
+});
+
+app.post("/api/billing/stripe/webhook", express.raw({ type: "application/json" }), async (req, res) => {
+  if (!stripe || !process.env.STRIPE_WEBHOOK_SECRET) {
+    return res.status(503).json({ message: "Stripe webhook is not configured" });
+  }
+
+  const signature = req.headers["stripe-signature"];
+  if (!signature) {
+    return res.status(400).json({ message: "Missing stripe signature" });
+  }
+
+  let event;
+
+  try {
+    event = stripe.webhooks.constructEvent(req.body, signature, process.env.STRIPE_WEBHOOK_SECRET);
+  } catch (error) {
+    return res.status(400).json({ message: `Webhook signature verification failed: ${error.message}` });
+  }
+
+  try {
+    if (event.type === "checkout.session.completed") {
+      const session = event.data.object;
+      const userId = session.metadata?.userId;
+
+      if (userId) {
+        const partial = {
+          stripeCustomerId: session.customer ? String(session.customer) : undefined,
+          stripeSubscriptionId: session.subscription ? String(session.subscription) : undefined,
+          status: "active",
+        };
+
+        if (session.subscription) {
+          const stripeSubscription = await stripe.subscriptions.retrieve(String(session.subscription));
+          Object.assign(partial, buildStripeSubscriptionSnapshot(stripeSubscription, session.metadata?.plan || "pro"));
+        }
+
+        await upsertSubscription(userId, partial);
+      }
+    }
+
+    if (event.type === "customer.subscription.created" || event.type === "customer.subscription.updated") {
+      const stripeSubscription = event.data.object;
+      const userId = stripeSubscription.metadata?.userId || (await getUserIdByStripeCustomerId(String(stripeSubscription.customer)));
+
+      if (userId) {
+        await upsertSubscription(userId, buildStripeSubscriptionSnapshot(stripeSubscription, "pro"));
+      }
+    }
+
+    if (event.type === "customer.subscription.deleted") {
+      const stripeSubscription = event.data.object;
+      const userId = stripeSubscription.metadata?.userId || (await getUserIdByStripeCustomerId(String(stripeSubscription.customer)));
+
+      if (userId) {
+        await upsertSubscription(userId, {
+          ...buildStripeSubscriptionSnapshot(stripeSubscription, "free"),
+          plan: "free",
+          status: "canceled",
+          stripeSubscriptionId: null,
+          cancelAtPeriodEnd: false,
+        });
+      }
+    }
+
+    return res.json({ received: true });
+  } catch (error) {
+    return res.status(500).json({ message: "Failed to process webhook event" });
   }
 });
 

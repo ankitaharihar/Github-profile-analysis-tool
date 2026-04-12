@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import "./App.css";
 
 import {
@@ -40,6 +41,21 @@ const buildRepoCsv = (repoList = []) => {
   return [header, ...rows]
     .map((row) => row.map((cell) => escapeCsvCell(cell)).join(","))
     .join("\n");
+};
+
+const buildLanguageData = (repoList = []) => {
+  const totals = {};
+
+  repoList.forEach((repo) => {
+    if (repo.language) {
+      totals[repo.language] = (totals[repo.language] || 0) + 1;
+    }
+  });
+
+  return Object.entries(totals)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8)
+    .map(([name, value]) => ({ name, value }));
 };
 
 const calculateScore = (profile, repos) => {
@@ -183,10 +199,193 @@ const getLoginNotice = () => {
   return null;
 };
 
+const RouteInfoPanel = ({ title, description, bullets, accent }) => (
+  <section className="hero-panel relative overflow-hidden rounded-4xl px-4 py-10 md:px-8 md:py-12">
+    <div className="hero-grid" aria-hidden="true" />
+    <div className="hero-orb hero-orb--left" aria-hidden="true" />
+    <div className="hero-orb hero-orb--right" aria-hidden="true" />
+
+    <div className="relative z-10 mx-auto max-w-4xl text-center">
+      <div className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-slate-300">
+        {accent}
+      </div>
+      <h2 className="mt-4 text-3xl font-extrabold text-white md:text-5xl">{title}</h2>
+      <p className="mx-auto mt-4 max-w-2xl text-slate-300 md:text-lg">{description}</p>
+
+      <div className="mt-7 grid gap-3 text-left md:grid-cols-3">
+        {bullets.map((bullet) => (
+          <div
+            key={bullet}
+            className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200"
+          >
+            {bullet}
+          </div>
+        ))}
+      </div>
+    </div>
+  </section>
+);
+
+const pricingPlans = [
+  {
+    id: "free",
+    name: "Free",
+    price: "$0",
+    period: "/month",
+    subtitle: "Great for solo developers exploring public profile analytics.",
+    features: [
+      "Profile score and repository insights",
+      "Recent search history",
+      "Basic charts and language breakdown",
+    ],
+    cta: "Start Free",
+    tone: "base",
+  },
+  {
+    id: "pro",
+    name: "Pro",
+    price: "$12",
+    period: "/month",
+    subtitle: "For power users who need deeper filtering and export workflows.",
+    features: [
+      "Advanced filters and smart sorting",
+      "CSV export and richer analytics views",
+      "Priority API performance",
+    ],
+    cta: "Upgrade to Pro",
+    tone: "highlight",
+  },
+  {
+    id: "team",
+    name: "Team",
+    price: "$39",
+    period: "/month",
+    subtitle: "For teams that collaborate on engineering intelligence dashboards.",
+    features: [
+      "Shared dashboards and saved views",
+      "Role-based access controls",
+      "Team activity summaries",
+    ],
+    cta: "Contact Sales",
+    tone: "base",
+  },
+];
+
+const PricingPanel = ({ subscription, onSelectPlan, onCancelRenewal, onResumeRenewal, loading }) => (
+  <section className="hero-panel relative overflow-hidden rounded-4xl px-4 py-10 md:px-8 md:py-12">
+    <div className="hero-grid" aria-hidden="true" />
+    <div className="hero-orb hero-orb--left" aria-hidden="true" />
+    <div className="hero-orb hero-orb--right" aria-hidden="true" />
+
+    <div className="relative z-10 mx-auto max-w-6xl">
+      <div className="mx-auto max-w-3xl text-center">
+        <div className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-slate-300">
+          Pricing
+        </div>
+        <h2 className="mt-4 text-3xl font-extrabold text-white md:text-5xl">Simple Plans, Transparent Value</h2>
+        <p className="mx-auto mt-4 max-w-2xl text-slate-300 md:text-lg">
+          Start free for personal analysis, then scale to team workflows with deeper usage and collaboration.
+        </p>
+      </div>
+
+      <div className="pricing-status mt-6 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200">
+        <div>
+          Current plan: <span className="font-semibold uppercase">{subscription.plan || "free"}</span>
+          {subscription.status ? (
+            <span className="ml-2 rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] text-slate-300">
+              {subscription.status}
+            </span>
+          ) : null}
+        </div>
+        {subscription.currentPeriodEnd && (
+          <div className="mt-1 text-xs text-slate-400">
+            Billing period ends: {new Date(subscription.currentPeriodEnd).toLocaleDateString()}
+          </div>
+        )}
+
+        {(subscription.plan === "pro" || subscription.plan === "team") && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {subscription.cancelAtPeriodEnd ? (
+              <button
+                type="button"
+                onClick={onResumeRenewal}
+                disabled={loading}
+                className="rounded-full border border-emerald-400/30 bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold text-emerald-200 transition hover:bg-emerald-500/20 disabled:opacity-60"
+              >
+                Resume Renewal
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={onCancelRenewal}
+                disabled={loading}
+                className="rounded-full border border-rose-400/30 bg-rose-500/10 px-3 py-1.5 text-xs font-semibold text-rose-200 transition hover:bg-rose-500/20 disabled:opacity-60"
+              >
+                Cancel At Period End
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="pricing-grid mt-8 grid gap-4 lg:grid-cols-3">
+        {pricingPlans.map((plan) => (
+          <article
+            key={plan.name}
+            className={`pricing-card rounded-3xl border p-5 ${plan.tone === "highlight" ? "pricing-card--highlight" : "pricing-card--base"}`}
+          >
+            <div className="text-sm font-semibold uppercase tracking-[0.14em] text-slate-400">{plan.name}</div>
+            <div className="mt-3 flex items-end gap-1">
+              <span className="text-4xl font-extrabold text-white">{plan.price}</span>
+              <span className="pb-1 text-sm text-slate-400">{plan.period}</span>
+            </div>
+            <p className="mt-3 text-sm text-slate-300">{plan.subtitle}</p>
+
+            <ul className="mt-4 space-y-2 text-sm text-slate-200">
+              {plan.features.map((feature) => (
+                <li key={feature} className="flex items-start gap-2">
+                  <span className="pricing-check mt-1 inline-block h-2 w-2 rounded-full" />
+                  <span>{feature}</span>
+                </li>
+              ))}
+            </ul>
+
+            <button
+              type="button"
+              onClick={() => onSelectPlan(plan.id)}
+              disabled={loading || subscription.plan === plan.id}
+              className={`mt-6 w-full rounded-xl px-4 py-2.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${plan.tone === "highlight" ? "pricing-btn--highlight" : "pricing-btn--base"}`}
+            >
+              {subscription.plan === plan.id ? "Current Plan" : plan.cta}
+            </button>
+          </article>
+        ))}
+      </div>
+    </div>
+  </section>
+);
+
 export default function App() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [theme, setTheme] = useState(() => {
+    if (typeof window === "undefined") return "dark";
+
+    const savedTheme = localStorage.getItem("theme");
+    if (savedTheme === "dark" || savedTheme === "light") return savedTheme;
+
+    return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+  });
   const [authUser, setAuthUser] = useState(getAuthUser);
   const [loginNotice, setLoginNotice] = useState(getLoginNotice);
   const [oauthConfig, setOauthConfig] = useState({ github: false, google: false });
+  const [subscription, setSubscription] = useState({
+    plan: "free",
+    status: "inactive",
+    currentPeriodEnd: null,
+    cancelAtPeriodEnd: false,
+  });
+  const [updatingPlan, setUpdatingPlan] = useState(false);
   const [username, setUsername] = useState("");
   const [profile, setProfile] = useState(null);
   const [repos, setRepos] = useState([]);
@@ -214,6 +413,60 @@ export default function App() {
       return [];
     }
   });
+
+  useEffect(() => {
+    const loadSubscription = async () => {
+      if (!authUser) {
+        setSubscription({ plan: "free", status: "inactive", currentPeriodEnd: null, cancelAtPeriodEnd: false });
+        return;
+      }
+
+      try {
+        const response = await axios.get(`${API_BASE_URL}/api/billing/subscription`, {
+          withCredentials: true,
+        });
+        setSubscription(response.data.subscription);
+      } catch {
+        setSubscription({ plan: "free", status: "inactive", currentPeriodEnd: null, cancelAtPeriodEnd: false });
+      }
+    };
+
+    loadSubscription();
+  }, [authUser]);
+
+  useEffect(() => {
+    if (location.pathname !== "/") {
+      setShowLoginPage(false);
+      setShowHistory(false);
+      setShowExploreMenu(false);
+    }
+  }, [location.pathname]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const checkoutState = params.get("checkout");
+
+    if (!checkoutState) return;
+
+    if (checkoutState === "success") {
+      setLoginNotice({ type: "success", text: "Payment successful. Your plan is being activated." });
+    }
+
+    if (checkoutState === "cancel") {
+      setLoginNotice({ type: "error", text: "Checkout canceled. No changes were made." });
+    }
+
+    navigate(location.pathname, { replace: true });
+  }, [location.pathname, location.search, navigate]);
+
+  useEffect(() => {
+    if (typeof document !== "undefined") {
+      document.documentElement.setAttribute("data-theme", theme);
+      document.body.setAttribute("data-theme", theme);
+    }
+
+    localStorage.setItem("theme", theme);
+  }, [theme]);
 
   useEffect(() => {
     const loadOauthConfig = async () => {
@@ -301,6 +554,76 @@ export default function App() {
     setSelectedLanguage("all");
     setRepoSortBy("stars_desc");
     setIncludeForkRepos(true);
+    setSubscription({ plan: "free", status: "inactive", currentPeriodEnd: null, cancelAtPeriodEnd: false });
+  };
+
+  const handlePlanSelect = async (planId) => {
+    if (!authUser) {
+      setShowLoginPage(true);
+      setLoginNotice({ type: "error", text: "Please sign in first to choose a plan." });
+      return;
+    }
+
+    if (subscription.plan === planId) return;
+
+    try {
+      setUpdatingPlan(true);
+      if (planId === "free") {
+        const response = await axios.post(
+          `${API_BASE_URL}/api/billing/subscription`,
+          { plan: "free" },
+          { withCredentials: true }
+        );
+        setSubscription(response.data.subscription);
+        setLoginNotice({ type: "success", text: "Switched to FREE plan." });
+      } else {
+        const response = await axios.post(
+          `${API_BASE_URL}/api/billing/checkout-session`,
+          { plan: planId },
+          { withCredentials: true }
+        );
+
+        if (response.data?.url) {
+          window.location.href = response.data.url;
+          return;
+        }
+
+        setLoginNotice({ type: "error", text: "Unable to start checkout right now." });
+      }
+    } catch (error) {
+      const message = error?.response?.data?.message || "Unable to update plan right now.";
+      setLoginNotice({ type: "error", text: message });
+    } finally {
+      setUpdatingPlan(false);
+    }
+  };
+
+  const handleCancelRenewal = async () => {
+    try {
+      setUpdatingPlan(true);
+      const response = await axios.post(`${API_BASE_URL}/api/billing/subscription/cancel`, {}, { withCredentials: true });
+      setSubscription(response.data.subscription);
+      setLoginNotice({ type: "success", text: "Your subscription will cancel at period end." });
+    } catch (error) {
+      const message = error?.response?.data?.message || "Unable to cancel renewal right now.";
+      setLoginNotice({ type: "error", text: message });
+    } finally {
+      setUpdatingPlan(false);
+    }
+  };
+
+  const handleResumeRenewal = async () => {
+    try {
+      setUpdatingPlan(true);
+      const response = await axios.post(`${API_BASE_URL}/api/billing/subscription/resume`, {}, { withCredentials: true });
+      setSubscription(response.data.subscription);
+      setLoginNotice({ type: "success", text: "Subscription renewal resumed." });
+    } catch (error) {
+      const message = error?.response?.data?.message || "Unable to resume renewal right now.";
+      setLoginNotice({ type: "error", text: message });
+    } finally {
+      setUpdatingPlan(false);
+    }
   };
 
   const fetchSuggestions = async (value) => {
@@ -310,7 +633,7 @@ export default function App() {
     }
 
     try {
-      const res = await axios.get(`https://api.github.com/search/users?q=${value}&per_page=8`);
+      const res = await axios.get(`${API_BASE_URL}/api/github/search/users?q=${encodeURIComponent(value)}&per_page=8`);
       setSuggestions(res.data.items.slice(0, 5));
       setShowDropdown(true);
     } catch (err) {
@@ -318,45 +641,16 @@ export default function App() {
     }
   };
 
-  const collectLanguageData = async (repoList) => {
-    const totals = {};
-
-    await Promise.allSettled(
-      repoList.map(async (repo) => {
-        if (!repo.languages_url) {
-          if (repo.language) {
-            totals[repo.language] = (totals[repo.language] || 0) + 1;
-          }
-          return;
-        }
-
-        try {
-          const response = await axios.get(repo.languages_url);
-          const entries = Object.entries(response.data || {});
-
-          if (entries.length === 0 && repo.language) {
-            totals[repo.language] = (totals[repo.language] || 0) + 1;
-            return;
-          }
-
-          entries.forEach(([language, bytes]) => {
-            totals[language] = (totals[language] || 0) + bytes;
-          });
-        } catch {
-          if (repo.language) {
-            totals[repo.language] = (totals[repo.language] || 0) + 1;
-          }
-        }
-      })
-    );
-
-    return Object.entries(totals)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 8)
-      .map(([name, value]) => ({ name, value }));
-  };
-
   const analyzeProfile = async (user = username) => {
+    if (!authUser) {
+      setShowLoginPage(true);
+      setLoginNotice({
+        type: "error",
+        text: "Please sign in first to search GitHub profiles.",
+      });
+      return;
+    }
+
     const normalizedUser = user.trim();
 
     if (!normalizedUser) return;
@@ -371,14 +665,20 @@ export default function App() {
 
     try {
       const [profileRes, repoRes] = await Promise.all([
-        axios.get(`https://api.github.com/users/${normalizedUser}`),
-        axios.get(`https://api.github.com/users/${normalizedUser}/repos?per_page=100`)
+        axios.get(`${API_BASE_URL}/api/github/${normalizedUser}`),
+        axios.get(`${API_BASE_URL}/api/github/${normalizedUser}/repos?per_page=100`)
       ]);
 
+      const repoPayload = repoRes.data;
+      const repoList = Array.isArray(repoPayload)
+        ? repoPayload
+        : Array.isArray(repoPayload?.data)
+          ? repoPayload.data
+          : [];
+
       setProfile(profileRes.data);
-      const repoList = repoRes.data || [];
       setRepos(repoList);
-      setLanguageData(await collectLanguageData(repoList));
+      setLanguageData(buildLanguageData(repoList));
       setRepoSearchQuery("");
       setSelectedLanguage("all");
       setRepoSortBy("stars_desc");
@@ -395,7 +695,13 @@ export default function App() {
       });
     } catch (err) {
       console.log(err);
-      setError("User not found. Check the username and try again.");
+      if (axios.isAxiosError(err) && err.response?.status === 404) {
+        setError("User not found. Check the username and try again.");
+      } else if (axios.isAxiosError(err) && err.response?.status === 403) {
+        setError("GitHub rate limit reached. Please try again in a moment.");
+      } else {
+        setError("Could not load GitHub data right now. Please try again.");
+      }
     } finally {
       setLoading(false);
     }
@@ -450,13 +756,20 @@ export default function App() {
     return (filteredRepos.filter((repo) => repo.fork).length / filteredRepos.length) * 100;
   }, [filteredRepos]);
   const aiInsights = useMemo(() => buildAiInsights(profile, repos, score), [profile, repos, score]);
+  const isUserNotFoundError = error.toLowerCase().includes("user not found");
+  const errorTitle = isUserNotFoundError ? "User not found" : "Unable to fetch data";
+  const errorHint = isUserNotFoundError
+    ? "Try verified usernames like torvalds, gaearon, or vercel."
+    : "Check backend token and network, then try again.";
+  const isHomeRoute = location.pathname === "/";
   const isResultView = Boolean(profile);
-  const isHomeView = !isResultView && !showLoginPage && !showHistory;
-  const isHistoryView = !isResultView && !showLoginPage && authUser && showHistory;
+  const isHomeView = isHomeRoute && !isResultView && !showLoginPage && !showHistory;
+  const isHistoryView = isHomeRoute && !isResultView && !showLoginPage && authUser && showHistory;
   const hasAnyOauthProvider = oauthConfig.github || oauthConfig.google;
   const authProviderLabel = authUser?.provider
     ? `${authUser.provider.charAt(0).toUpperCase()}${authUser.provider.slice(1)} Profile`
     : "Account";
+  const canExportCsv = authUser && ["pro", "team"].includes(subscription.plan);
 
   const loginProviders = [
     {
@@ -485,10 +798,10 @@ export default function App() {
   };
 
   return (
-    <div className="app-shell min-h-screen px-4 py-4 text-white md:px-6 md:py-5">
+    <div className={`app-shell min-h-screen px-4 py-4 text-white md:px-6 md:py-5 ${theme === "light" ? "theme-light" : "theme-dark"}`}>
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-12">
-        <header className="nav-shell relative z-50 flex items-center justify-between gap-4 rounded-[1.75rem] border border-white/10 px-4 py-3 md:px-5">
-          <div className="flex min-w-0 items-center gap-3">
+        <header className="nav-shell relative z-50 flex flex-col gap-3 rounded-[1.75rem] border border-white/10 px-4 py-3 md:flex-row md:items-center md:justify-between md:px-5">
+          <div className="nav-brand-row flex min-w-0 items-center justify-between gap-3 md:w-auto md:justify-start">
             <div className="brand-mark">
               <svg viewBox="0 0 24 24" aria-hidden="true" className="brand-mark__icon">
                 <path
@@ -501,16 +814,19 @@ export default function App() {
               <div className="truncate text-lg font-semibold text-sky-300 md:text-xl">
                 GitHub Intelligence
               </div>
-              <div className="truncate text-xs text-slate-400 md:text-sm">
-                Professional Analytics Platform
-              </div>
             </div>
           </div>
 
-          <nav className="hidden items-center gap-10 text-sm font-semibold text-slate-400 lg:flex">
-            <a href="#">Features</a>
-            <a href="#">Pricing</a>
-            <a href="#">Documentation</a>
+          <nav className="hidden items-center gap-8 text-sm font-semibold text-slate-400 lg:flex">
+            <NavLink to="/features" className={({ isActive }) => `nav-link ${isActive ? "nav-link--active" : ""}`}>
+              Features
+            </NavLink>
+            <NavLink to="/pricing" className={({ isActive }) => `nav-link ${isActive ? "nav-link--active" : ""}`}>
+              Pricing
+            </NavLink>
+            <NavLink to="/documentation" className={({ isActive }) => `nav-link ${isActive ? "nav-link--active" : ""}`}>
+              Documentation
+            </NavLink>
           </nav>
 
           <div className="hidden items-center lg:block" ref={exploreMenuRef}>
@@ -548,10 +864,24 @@ export default function App() {
             )}
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="nav-actions flex w-full items-center gap-3 md:ml-auto md:w-auto md:justify-end">
+            <button
+              type="button"
+              onClick={() => setTheme((value) => (value === "dark" ? "light" : "dark"))}
+              className="theme-toggle-btn inline-flex items-center justify-center gap-2 rounded-full border border-white/10 bg-white/5 px-3.5 py-2 text-sm font-semibold text-slate-100 transition hover:bg-white/10"
+              aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}
+              title={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}
+            >
+              <span aria-hidden="true">{theme === "dark" ? "☀" : "☾"}</span>
+              <span className="hidden sm:inline">{theme === "dark" ? "Light" : "Dark"}</span>
+            </button>
+
             {isResultView ? (
               <button
                 onClick={() => {
+                  if (!isHomeRoute) {
+                    navigate("/");
+                  }
                   setProfile(null);
                   setRepos([]);
                   setLanguageData([]);
@@ -559,7 +889,7 @@ export default function App() {
                   setShowHistory(false);
                   setShowProfileMenu(false);
                 }}
-                className="rounded-full border border-fuchsia-400/20 bg-white/5 px-4 py-2 text-sm font-semibold text-white transition hover:border-fuchsia-300/45 hover:bg-white/10"
+                className="nav-new-search-btn rounded-full border border-fuchsia-400/20 bg-white/5 px-4 py-2 text-sm font-semibold text-white transition hover:border-fuchsia-300/45 hover:bg-white/10"
               >
                 New Search
               </button>
@@ -567,6 +897,9 @@ export default function App() {
               <>
                 <button
                   onClick={() => {
+                    if (!isHomeRoute) {
+                      navigate("/");
+                    }
                     if (authUser) {
                       setShowHistory((value) => !value);
                       return;
@@ -574,7 +907,7 @@ export default function App() {
                     setShowLoginPage(true);
                   }}
                   disabled={!authUser && !hasAnyOauthProvider}
-                  className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition ${
+                  className={`nav-history-btn inline-flex items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition ${
                     authUser
                       ? "text-slate-200 hover:bg-white/5"
                       : "text-slate-300 hover:bg-white/5 disabled:cursor-not-allowed disabled:text-slate-500"
@@ -585,10 +918,10 @@ export default function App() {
                 </button>
 
                 {authUser ? (
-                  <div className="relative z-50" ref={profileMenuRef}>
+                  <div className="nav-profile-wrap relative z-50" ref={profileMenuRef}>
                     <button
                       onClick={() => setShowProfileMenu((value) => !value)}
-                      className="profile-pill flex items-center gap-3 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-left text-sm font-semibold text-white hover:bg-white/10"
+                      className="nav-profile-btn profile-pill flex items-center gap-3 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-left text-sm font-semibold text-white hover:bg-white/10"
                     >
                       <img
                         src={authUser.avatarUrl}
@@ -638,8 +971,13 @@ export default function App() {
                   </div>
                 ) : (
                   <button
-                    onClick={() => setShowLoginPage(true)}
-                    className="login-pill rounded-full px-5 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-70"
+                    onClick={() => {
+                      if (!isHomeRoute) {
+                        navigate("/");
+                      }
+                      setShowLoginPage(true);
+                    }}
+                    className="nav-login-btn login-pill rounded-full px-5 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-70"
                   >
                     Login <span className="ml-1 text-xs">⌄</span>
                   </button>
@@ -661,154 +999,198 @@ export default function App() {
           </div>
         )}
 
+        {!isHomeRoute && (
+          <>
+            {location.pathname === "/features" && (
+              <RouteInfoPanel
+                accent="Platform Features"
+                title="Built For Deep GitHub Insights"
+                description="Track repositories, evaluate momentum, and understand engineering signals in one clean workflow."
+                bullets={[
+                  "Profile scoring with quality indicators",
+                  "Repository filtering, sorting, and CSV export",
+                  "Language, activity, and skill visual analytics",
+                ]}
+              />
+            )}
+
+            {location.pathname === "/pricing" && (
+              <PricingPanel
+                subscription={subscription}
+                onSelectPlan={handlePlanSelect}
+                onCancelRenewal={handleCancelRenewal}
+                onResumeRenewal={handleResumeRenewal}
+                loading={updatingPlan}
+              />
+            )}
+
+            {location.pathname === "/documentation" && (
+              <RouteInfoPanel
+                accent="Documentation"
+                title="Everything You Need To Get Started"
+                description="Set up OAuth, configure backend environment, and learn each dashboard module with clear guides."
+                bullets={[
+                  "Installation and environment setup",
+                  "Authentication and API usage guides",
+                  "Troubleshooting and best practices",
+                ]}
+              />
+            )}
+          </>
+        )}
+
         {isHomeView && (
-        <section className="hero-panel relative overflow-hidden rounded-4xl px-4 py-10 text-center md:px-8 md:py-14">
-          <div className="hero-grid" aria-hidden="true" />
-          <div className="hero-orb hero-orb--left" aria-hidden="true" />
-          <div className="hero-orb hero-orb--right" aria-hidden="true" />
+          <section className="hero-panel relative overflow-hidden rounded-4xl px-4 py-10 text-center md:px-8 md:py-14">
+            <div className="hero-grid" aria-hidden="true" />
+            <div className="hero-orb hero-orb--left" aria-hidden="true" />
+            <div className="hero-orb hero-orb--right" aria-hidden="true" />
 
-          <div className="relative z-10 mx-auto flex max-w-5xl flex-col items-center">
-            <div className="hero-badge mb-8 inline-flex items-center gap-2 rounded-full border border-white/10 px-5 py-2 text-sm font-medium text-violet-200 shadow-lg shadow-violet-500/10">
-              <span className="text-lg text-violet-300">✦</span>
-              <span>Powered by Advanced AI Analytics</span>
-              <span className="text-lg text-violet-300">✦</span>
-            </div>
-
-            <h1 className="hero-heading max-w-4xl text-balance font-extrabold leading-[0.9] tracking-tight">
-              <span className="hero-heading__top block text-white/90">Unlock the Power of</span>
-              <span className="hero-heading__bottom block">GitHub Intelligence</span>
-            </h1>
-
-            <p className="mt-7 max-w-4xl text-base leading-8 text-slate-300 md:text-[1.3rem] md:leading-8">
-              Analyze profiles, repos, and developer momentum in seconds.
-            </p>
-
-            <div className="hero-search-shell mt-9 w-full max-w-5xl rounded-[1.6rem] border border-fuchsia-500/30 bg-[#1a2337]/95 p-2.5 shadow-[0_0_28px_rgba(236,72,153,0.34)] md:p-3">
-              <div className="flex flex-col gap-2.5 md:flex-row md:items-stretch">
-                <div className="relative flex-1">
-                  <div className="pointer-events-none absolute left-5 top-1/2 -translate-y-1/2 text-slate-500">
-                    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5">
-                      <path
-                        fill="currentColor"
-                        d="M12 2C6.48 2 2 6.58 2 12.26c0 4.53 2.87 8.37 6.84 9.73.5.1.68-.22.68-.48 0-.24-.01-.88-.02-1.72-2.78.62-3.37-1.38-3.37-1.38-.45-1.18-1.11-1.49-1.11-1.49-.91-.64.07-.63.07-.63 1 .07 1.53 1.06 1.53 1.06.9 1.58 2.36 1.12 2.94.86.09-.67.35-1.12.64-1.38-2.22-.26-4.56-1.15-4.56-5.12 0-1.13.39-2.06 1.03-2.79-.1-.27-.45-1.34.1-2.78 0 0 .84-.27 2.75 1.06A9.3 9.3 0 0 1 12 6.85c.85 0 1.71.12 2.51.35 1.91-1.33 2.75-1.06 2.75-1.06.55 1.44.2 2.51.1 2.78.64.73 1.03 1.66 1.03 2.79 0 3.98-2.34 4.86-4.57 5.11.36.32.68.94.68 1.9 0 1.37-.01 2.48-.01 2.82 0 .27.18.59.69.48A10.27 10.27 0 0 0 22 12.26C22 6.58 17.52 2 12 2Z"
-                      />
-                    </svg>
-                  </div>
-                  <input
-                    value={username}
-                    onChange={(event) => {
-                      setUsername(event.target.value);
-                    }}
-                    onFocus={() => setShowDropdown(true)}
-                    onKeyDown={(event) => event.key === "Enter" && analyzeProfile()}
-                    placeholder="Enter GitHub username (e.g., torvalds)"
-                    className="hero-input h-14 w-full rounded-xl border border-white/5 bg-[#24314a] pl-13 pr-4 text-[0.96rem] text-slate-100 placeholder:text-slate-500 outline-none disabled:cursor-not-allowed disabled:opacity-60 md:h-14"
-                  />
-                </div>
-
-                <button
-                  onClick={() => analyzeProfile()}
-                  className="hero-analyze-btn h-14 rounded-xl px-6 text-[1rem] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60 md:h-14 md:w-40"
-                >
-                  <span className="mr-2">⚡</span>
-                  Analyze
-                </button>
+            <div className="relative z-10 mx-auto flex max-w-5xl flex-col items-center">
+              <div className="hero-badge mb-8 inline-flex items-center gap-2 rounded-full border border-white/10 px-5 py-2 text-sm font-medium text-violet-200 shadow-lg shadow-violet-500/10">
+                <span className="text-lg text-violet-300">✦</span>
+                <span>Powered by Advanced AI Analytics</span>
+                <span className="text-lg text-violet-300">✦</span>
               </div>
 
-              <p className="mt-4 text-sm text-slate-400 md:text-[0.98rem]">
-                Get detailed analytics, contribution graphs, and repository insights
+              <h1 className="hero-heading max-w-4xl text-balance font-extrabold leading-[0.9] tracking-tight">
+                <span className="hero-heading__top block text-white/90">Unlock the Power of</span>
+                <span className="hero-heading__bottom block">GitHub Intelligence</span>
+              </h1>
+
+              <p className="mt-7 max-w-4xl text-base leading-8 text-slate-300 md:text-[1.3rem] md:leading-8">
+                Analyze profiles, repos, and developer momentum in seconds.
               </p>
 
-              {loading && (
-                <div className="mt-4 rounded-2xl border border-white/10 bg-[#101a2e] p-4 text-left">
-                  <div className="flex items-center gap-3 text-sm text-indigo-200">
-                    <span className="loading-spinner" />
-                    <span>Analyzing profile and repository metadata...</span>
-                  </div>
-                  <div className="mt-4 grid gap-2">
-                    <div className="skeleton-line h-3 w-2/3" />
-                    <div className="skeleton-line h-3 w-full" />
-                    <div className="skeleton-line h-3 w-4/5" />
-                  </div>
-                </div>
-              )}
-
-              {error && (
-                <div className="error-panel mt-4 rounded-2xl border border-rose-400/30 bg-rose-500/10 p-4 text-left">
-                  <div className="text-sm font-semibold text-rose-200">User not found</div>
-                  <div className="mt-1 text-sm text-rose-100/90">{error}</div>
-                  <div className="mt-2 text-xs text-rose-100/80">Try verified usernames like torvalds, gaearon, or vercel.</div>
-                </div>
-              )}
-
-              {showDropdown && suggestions.length > 0 && (
-                <div className="mt-4 overflow-hidden rounded-[1.2rem] border border-white/10 bg-[#111827] text-left shadow-2xl shadow-black/50">
-                  {suggestions.map((user) => (
-                    <div
-                      key={user.id}
-                      onClick={() => {
-                        setUsername(user.login);
-                        setShowDropdown(false);
-                        analyzeProfile(user.login);
-                      }}
-                      className="flex cursor-pointer items-center gap-3 px-4 py-3 transition hover:bg-white/5"
-                    >
-                      <img src={user.avatar_url} className="h-9 w-9 rounded-full" />
-                      <p className="text-sm text-slate-200">{user.login}</p>
+              <div className="hero-search-shell mt-9 w-full max-w-5xl rounded-[1.6rem] border border-fuchsia-500/30 bg-[#1a2337]/95 p-2.5 shadow-[0_0_28px_rgba(236,72,153,0.34)] md:p-3">
+                <div className="flex flex-col gap-2.5 md:flex-row md:items-stretch">
+                  <div className="relative flex-1">
+                    <div className="pointer-events-none absolute left-5 top-1/2 -translate-y-1/2 text-slate-500">
+                      <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5">
+                        <path
+                          fill="currentColor"
+                          d="M12 2C6.48 2 2 6.58 2 12.26c0 4.53 2.87 8.37 6.84 9.73.5.1.68-.22.68-.48 0-.24-.01-.88-.02-1.72-2.78.62-3.37-1.38-3.37-1.38-.45-1.18-1.11-1.49-1.11-1.49-.91-.64.07-.63.07-.63 1 .07 1.53 1.06 1.53 1.06.9 1.58 2.36 1.12 2.94.86.09-.67.35-1.12.64-1.38-2.22-.26-4.56-1.15-4.56-5.12 0-1.13.39-2.06 1.03-2.79-.1-.27-.45-1.34.1-2.78 0 0 .84-.27 2.75 1.06A9.3 9.3 0 0 1 12 6.85c.85 0 1.71.12 2.51.35 1.91-1.33 2.75-1.06 2.75-1.06.55 1.44.2 2.51.1 2.78.64.73 1.03 1.66 1.03 2.79 0 3.98-2.34 4.86-4.57 5.11.36.32.68.94.68 1.9 0 1.37-.01 2.48-.01 2.82 0 .27.18.59.69.48A10.27 10.27 0 0 0 22 12.26C22 6.58 17.52 2 12 2Z"
+                        />
+                      </svg>
                     </div>
-                  ))}
-                </div>
-              )}
-
-              {!authUser && (
-                <div className="mt-4">
-                  <div className="text-sm text-slate-400">
-                    Sign in to save and view search history.
+                    <input
+                      value={username}
+                      onChange={(event) => {
+                        setUsername(event.target.value);
+                      }}
+                      onFocus={() => setShowDropdown(true)}
+                      onKeyDown={(event) => event.key === "Enter" && analyzeProfile()}
+                      disabled={!authUser}
+                      placeholder="Enter GitHub username (e.g., torvalds)"
+                      className="hero-input h-14 w-full rounded-xl border border-white/5 bg-[#24314a] pl-13 pr-4 text-[0.96rem] text-slate-100 placeholder:text-slate-500 outline-none disabled:cursor-not-allowed disabled:opacity-60 md:h-14"
+                    />
                   </div>
-                </div>
-              )}
 
-              <div className="mt-4 grid gap-3 text-left md:grid-cols-2">
-                <div>
-                  <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Recent searches</div>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {history.length > 0 ? (
-                      history.slice(0, 5).map((item) => (
+                  <button
+                    onClick={() => analyzeProfile()}
+                    disabled={!authUser}
+                    className="hero-analyze-btn h-14 rounded-xl px-6 text-[1rem] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60 md:h-14 md:w-40"
+                  >
+                    <span className="mr-2">⚡</span>
+                    Analyze
+                  </button>
+                </div>
+
+                <p className="mt-4 text-sm text-slate-400 md:text-[0.98rem]">
+                  Get detailed analytics, contribution graphs, and repository insights
+                </p>
+
+                {loading && (
+                  <div className="mt-4 rounded-2xl border border-white/10 bg-[#101a2e] p-4 text-left">
+                    <div className="flex items-center gap-3 text-sm text-indigo-200">
+                      <span className="loading-spinner" />
+                      <span>Analyzing profile and repository metadata...</span>
+                    </div>
+                    <div className="mt-4 grid gap-2">
+                      <div className="skeleton-line h-3 w-2/3" />
+                      <div className="skeleton-line h-3 w-full" />
+                      <div className="skeleton-line h-3 w-4/5" />
+                    </div>
+                  </div>
+                )}
+
+                {error && (
+                  <div className="error-panel mt-4 rounded-2xl border border-rose-400/30 bg-rose-500/10 p-4 text-left">
+                    <div className="text-sm font-semibold text-rose-200">{errorTitle}</div>
+                    <div className="mt-1 text-sm text-rose-100/90">{error}</div>
+                    <div className="mt-2 text-xs text-rose-100/80">{errorHint}</div>
+                  </div>
+                )}
+
+                {showDropdown && suggestions.length > 0 && (
+                  <div className="mt-4 overflow-hidden rounded-[1.2rem] border border-white/10 bg-[#111827] text-left shadow-2xl shadow-black/50">
+                    {suggestions.map((user) => (
+                      <div
+                        key={user.id}
+                        onClick={() => {
+                          setUsername(user.login);
+                          setShowDropdown(false);
+                          analyzeProfile(user.login);
+                        }}
+                        className="flex cursor-pointer items-center gap-3 px-4 py-3 transition hover:bg-white/5"
+                      >
+                        <img src={user.avatar_url} className="h-9 w-9 rounded-full" />
+                        <p className="text-sm text-slate-200">{user.login}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {!authUser && (
+                  <div className="mt-4">
+                    <div className="text-sm text-slate-400">
+                      Sign in first to search profiles and save search history.
+                    </div>
+                  </div>
+                )}
+
+                <div className="hero-meta-grid mt-5 grid gap-3 text-left md:grid-cols-2">
+                  <div className="hero-meta-card">
+                    <div className="hero-meta-card__eyebrow">Recent searches</div>
+                    <div className="hero-meta-card__header">Jump back into a previous profile.</div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {history.length > 0 ? (
+                        history.slice(0, 5).map((item) => (
+                          <button
+                            key={`recent-${item}`}
+                            type="button"
+                            onClick={() => analyzeProfile(item)}
+                            className="hero-chip hero-chip--recent"
+                          >
+                            {item}
+                          </button>
+                        ))
+                      ) : (
+                        <span className="hero-meta-empty">No searches yet</span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="hero-meta-card hero-meta-card--accent">
+                    <div className="hero-meta-card__eyebrow">Trending users</div>
+                    <div className="hero-meta-card__header">Start with the community's favorite profiles.</div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {TRENDING_USERS.map((item) => (
                         <button
-                          key={`recent-${item}`}
+                          key={`trend-${item}`}
                           type="button"
                           onClick={() => analyzeProfile(item)}
-                          className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-200 transition hover:border-fuchsia-400/45 hover:bg-white/10"
+                          className="hero-chip hero-chip--trend"
                         >
                           {item}
                         </button>
-                      ))
-                    ) : (
-                      <span className="text-xs text-slate-500">No searches yet</span>
-                    )}
-                  </div>
-                </div>
-
-                <div>
-                  <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Trending users</div>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {TRENDING_USERS.map((item) => (
-                      <button
-                        key={`trend-${item}`}
-                        type="button"
-                        onClick={() => analyzeProfile(item)}
-                        className="rounded-full border border-sky-400/20 bg-sky-500/10 px-3 py-1 text-xs text-sky-200 transition hover:border-sky-300/45 hover:bg-sky-500/15"
-                      >
-                        {item}
-                      </button>
-                    ))}
+                      ))}
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
 
-          </div>
-        </section>
+            </div>
+          </section>
         )}
 
         {!isResultView && showLoginPage && (
@@ -818,13 +1200,13 @@ export default function App() {
             <div className="hero-orb hero-orb--right" aria-hidden="true" />
 
             <div className="login-shell relative z-10 mx-auto grid w-full max-w-4xl gap-4 lg:grid-cols-[0.95fr_1.4fr]">
-              <div className="login-brand rounded-3xl border border-white/10 p-6">
-                <div className="inline-flex items-center rounded-full border border-fuchsia-400/30 bg-fuchsia-500/10 px-3 py-1 text-xs font-semibold text-fuchsia-200">
+              <div className="login-brand rounded-3xl border border-white/10 p-6 md:p-7">
+                <div className="login-brand__badge inline-flex items-center rounded-full border border-fuchsia-400/30 bg-fuchsia-500/10 px-3 py-1 text-xs font-semibold text-fuchsia-200">
                   Secure OAuth Access
                 </div>
-                <h2 className="mt-4 text-2xl font-bold text-white md:text-3xl">Welcome back</h2>
+                <h2 className="login-brand__title mt-4 text-2xl font-bold text-white md:text-3xl">Welcome back</h2>
                 <p className="mt-2 text-sm text-slate-300 md:text-base">
-                  Sign in to unlock history, saved profiles, and personalized insights.
+                  Sign in once and get a faster, personalized analysis experience.
                 </p>
                 <p className="mt-5 text-xs text-slate-400">
                   Your account is used only for authentication and personalized dashboard actions.
@@ -833,7 +1215,9 @@ export default function App() {
 
               <div className="login-card rounded-3xl border border-white/10 p-4 md:p-5">
                 <div className="mb-3 flex items-center justify-between gap-3">
-                  <div className="text-sm font-medium text-slate-300">Choose a sign-in provider</div>
+                  <div>
+                    <div className="text-sm font-semibold text-slate-100">Choose a sign-in provider</div>
+                  </div>
                   <button
                     onClick={() => setShowLoginPage(false)}
                     className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:bg-white/10"
@@ -850,13 +1234,24 @@ export default function App() {
                       disabled={!oauthConfig[provider.key]}
                       className="login-provider w-full rounded-2xl border border-white/10 bg-[#18233a]/90 px-4 py-3 text-left transition hover:border-fuchsia-400/35 hover:bg-[#1d2a45] disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      <div className="flex items-center gap-3">
-                        <span className={`h-2.5 w-2.5 rounded-full ${
-                          provider.key === "github"
-                            ? "bg-sky-400"
-                            : "bg-rose-400"
-                        }`} />
-                        <div className="text-base font-semibold text-white">{provider.label}</div>
+                      <div className="login-provider__head flex items-center gap-3">
+                        <div className="flex items-center gap-3">
+                          <span className="login-provider__icon" aria-hidden="true">
+                            {provider.key === "github" ? (
+                              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor">
+                                <path d="M12 2C6.48 2 2 6.58 2 12.26c0 4.53 2.87 8.37 6.84 9.73.5.1.68-.22.68-.48 0-.24-.01-.88-.02-1.72-2.78.62-3.37-1.38-3.37-1.38-.45-1.18-1.11-1.49-1.11-1.49-.91-.64.07-.63.07-.63 1 .07 1.53 1.06 1.53 1.06.9 1.58 2.36 1.12 2.94.86.09-.67.35-1.12.64-1.38-2.22-.26-4.56-1.15-4.56-5.12 0-1.13.39-2.06 1.03-2.79-.1-.27-.45-1.34.1-2.78 0 0 .84-.27 2.75 1.06A9.3 9.3 0 0 1 12 6.85c.85 0 1.71.12 2.51.35 1.91-1.33 2.75-1.06 2.75-1.06.55 1.44.2 2.51.1 2.78.64.73 1.03 1.66 1.03 2.79 0 3.98-2.34 4.86-4.57 5.11.36.32.68.94.68 1.9 0 1.37-.01 2.48-.01 2.82 0 .27.18.59.69.48A10.27 10.27 0 0 0 22 12.26C22 6.58 17.52 2 12 2Z" />
+                              </svg>
+                            ) : (
+                              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M21.35 12.24c0-.78-.07-1.53-.2-2.24H12v4.24h5.24a4.48 4.48 0 0 1-1.95 2.94v2.45h3.16c1.85-1.7 2.9-4.2 2.9-7.39Z" fill="#4285F4" />
+                                <path d="M12 21.7c2.62 0 4.82-.87 6.42-2.37l-3.16-2.45c-.87.58-1.99.92-3.26.92-2.5 0-4.61-1.68-5.37-3.93H3.36v2.53A9.7 9.7 0 0 0 12 21.7Z" fill="#34A853" />
+                                <path d="M6.63 13.87a5.78 5.78 0 0 1 0-3.74V7.6H3.36a9.7 9.7 0 0 0 0 8.8l3.27-2.53Z" fill="#FBBC05" />
+                                <path d="M12 6.2c1.43 0 2.7.5 3.7 1.45l2.78-2.78A9.29 9.29 0 0 0 12 2.3a9.7 9.7 0 0 0-8.64 5.3l3.27 2.53C7.39 7.88 9.5 6.2 12 6.2Z" fill="#EA4335" />
+                              </svg>
+                            )}
+                          </span>
+                          <div className="text-base font-semibold text-white">{provider.label}</div>
+                        </div>
                       </div>
                       <div className="mt-1 pl-5 text-sm text-slate-400">{provider.subtitle}</div>
                     </button>
@@ -868,10 +1263,6 @@ export default function App() {
                     OAuth is not configured on the backend yet. Add your client IDs and secrets in <span className="font-semibold">backend/.env</span>, then restart the backend.
                   </div>
                 )}
-
-                <p className="mt-4 text-xs text-slate-400">
-                  Providers that are not configured in backend env are shown as disabled.
-                </p>
               </div>
             </div>
           </section>
@@ -928,7 +1319,7 @@ export default function App() {
 
       </div>
 
-      {profile && (
+      {isHomeRoute && profile && (
         <div ref={resultSectionRef} className="space-y-6">
           <div className="rounded-2xl border border-white/10 bg-[#0f172a]/80 p-6">
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -1031,7 +1422,7 @@ export default function App() {
               <select
                 value={selectedLanguage}
                 onChange={(event) => setSelectedLanguage(event.target.value)}
-                className="h-11 rounded-xl border border-white/10 bg-white/5 px-3 text-sm text-slate-100 outline-none focus:border-fuchsia-400/45"
+                className="repo-filter-select h-11 rounded-xl border border-white/10 bg-white/5 px-3 text-sm text-slate-100 outline-none focus:border-fuchsia-400/45"
               >
                 <option value="all">All languages</option>
                 {availableLanguages.map((language) => (
@@ -1044,7 +1435,7 @@ export default function App() {
               <select
                 value={repoSortBy}
                 onChange={(event) => setRepoSortBy(event.target.value)}
-                className="h-11 rounded-xl border border-white/10 bg-white/5 px-3 text-sm text-slate-100 outline-none focus:border-fuchsia-400/45"
+                className="repo-filter-select h-11 rounded-xl border border-white/10 bg-white/5 px-3 text-sm text-slate-100 outline-none focus:border-fuchsia-400/45"
               >
                 <option value="stars_desc">Sort: Stars (high to low)</option>
                 <option value="updated_desc">Sort: Recently updated</option>
@@ -1055,10 +1446,10 @@ export default function App() {
               <button
                 type="button"
                 onClick={handleExportReposCsv}
-                disabled={filteredRepos.length === 0}
+                disabled={filteredRepos.length === 0 || !canExportCsv}
                 className="h-11 rounded-xl border border-cyan-400/20 bg-cyan-500/10 px-4 text-sm font-semibold text-cyan-200 transition hover:bg-cyan-500/20 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Export CSV
+                {canExportCsv ? "Export CSV" : "Pro/Team only"}
               </button>
             </div>
 
