@@ -1,11 +1,11 @@
-# GitHub Profile Analysis Tool
+# RepoInsight
 
-GitHub Profile Analysis Tool is a split frontend/backend app for exploring a GitHub user's public profile, repositories, and language breakdown. The frontend is a React + Vite dashboard, and the backend is a small Express API that proxies a few GitHub endpoints.
+RepoInsight is a split frontend/backend app for exploring a GitHub user's public profile, repositories, and language breakdown. The frontend is a React + Vite dashboard, and the backend is a small Express API that proxies a few GitHub endpoints.
 
 ## Project Layout
 
 ```text
-Github-profile-analysis-tool/
+RepoInsight/
 ├─ backend/
 ├─ frontend/
 ├─ package.json

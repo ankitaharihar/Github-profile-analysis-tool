@@ -463,6 +463,7 @@ export default function App() {
   const [showDropdown, setShowDropdown] = useState(false);
   const profileMenuRef = useRef(null);
   const exploreMenuRef = useRef(null);
+  const searchPanelRef = useRef(null);
   const resultSectionRef = useRef(null);
   const suggestTimerRef = useRef(null);
   const [history, setHistory] = useState(() => {
@@ -564,6 +565,10 @@ export default function App() {
       if (exploreMenuRef.current && !exploreMenuRef.current.contains(event.target)) {
         setShowExploreMenu(false);
       }
+
+      if (searchPanelRef.current && !searchPanelRef.current.contains(event.target)) {
+        setShowDropdown(false);
+      }
     };
 
     document.addEventListener("mousedown", handleClickOutside);
@@ -574,7 +579,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!username.trim()) {
+    if (!username.trim() || !showDropdown) {
       setSuggestions([]);
       return;
     }
@@ -585,7 +590,7 @@ export default function App() {
     }, 280);
 
     return () => window.clearTimeout(suggestTimerRef.current);
-  }, [username]);
+  }, [username, showDropdown]);
 
   const startOAuthLogin = (provider) => {
     if (!oauthConfig[provider]) return;
@@ -720,6 +725,7 @@ export default function App() {
     setError("");
     setProfile(null);
     setRepos([]);
+    setSuggestions([]);
     setShowDropdown(false);
 
     try {
@@ -922,7 +928,7 @@ export default function App() {
   return (
     <div className={`app-shell min-h-screen px-4 py-4 text-white md:px-6 md:py-5 ${theme === "light" ? "theme-light" : "theme-dark"}`}>
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-12">
-        <header className="nav-shell relative z-50 flex flex-col gap-3 rounded-[1.75rem] border border-white/10 px-4 py-3 md:flex-row md:items-center md:justify-between md:px-5">
+        <header className="nav-shell relative z-50 flex flex-col gap-3 rounded-[1.75rem] border border-white/10 px-4 py-3 md:flex-row md:items-center md:justify-start md:px-5">
           <div className="nav-brand-row flex min-w-0 items-center justify-between gap-3 md:w-auto md:justify-start">
             <div className="brand-mark">
               <svg viewBox="0 0 24 24" aria-hidden="true" className="brand-mark__icon">
@@ -934,7 +940,7 @@ export default function App() {
             </div>
             <div className="min-w-0">
               <div className="truncate text-lg font-semibold text-sky-300 md:text-xl">
-                GitHub Intelligence
+                RepoInsight
               </div>
             </div>
           </div>
@@ -986,7 +992,7 @@ export default function App() {
             )}
           </div>
 
-          <div className="nav-actions flex w-full items-center gap-3 md:ml-auto md:w-auto md:justify-end">
+          <div className="nav-actions flex w-full items-center gap-5 md:ml-auto md:w-auto md:justify-end">
             <button
               type="button"
               onClick={() => setTheme((value) => (value === "dark" ? "light" : "dark"))}
@@ -1177,7 +1183,7 @@ export default function App() {
 
               <h1 className="hero-heading max-w-4xl text-balance font-extrabold leading-[0.9] tracking-tight">
                 <span className="hero-heading__top block text-white/90">Unlock the Power of</span>
-                <span className="hero-heading__bottom block">GitHub Intelligence</span>
+                <span className="hero-heading__bottom block">RepoInsight</span>
               </h1>
 
               <p className="mt-7 max-w-4xl text-base leading-8 text-slate-300 md:text-[1.3rem] md:leading-8">
@@ -1190,7 +1196,7 @@ export default function App() {
                 <span className="hero-trust-chip">Setup in under 60 seconds</span>
               </div>
 
-              <div className="hero-search-shell mt-9 w-full max-w-5xl rounded-[1.6rem] border border-fuchsia-500/30 bg-[#1a2337]/95 p-2.5 shadow-[0_0_28px_rgba(236,72,153,0.34)] md:p-3">
+              <div ref={searchPanelRef} className="hero-search-shell mt-9 w-full max-w-5xl rounded-[1.6rem] border border-fuchsia-500/30 bg-[#1a2337]/95 p-2.5 shadow-[0_0_28px_rgba(236,72,153,0.34)] md:p-3">
                 <div className="flex flex-col gap-2.5 md:flex-row md:items-stretch">
                   <div className="relative flex-1">
                     <div className="pointer-events-none absolute left-5 top-1/2 -translate-y-1/2 text-slate-500">
@@ -1224,15 +1230,19 @@ export default function App() {
                   </button>
                 </div>
 
-                <p className="mt-4 text-sm text-slate-400 md:text-[0.98rem]">
-                  Get profile score, AI insights, and repo-level analytics in one clean workflow.
-                </p>
+                {!(showDropdown && suggestions.length > 0) && (
+                  <>
+                    <p className="mt-4 text-sm text-slate-400 md:text-[0.98rem]">
+                      Get profile score, AI insights, and repo-level analytics in one clean workflow.
+                    </p>
 
-                <p className="mt-2 text-xs text-slate-500 md:text-sm">
-                  {authUser
-                    ? "Tip: Try usernames like torvalds, gaearon, or vercel for instant demo-quality results."
-                    : "Sign in to unlock search history and full analytics."}
-                </p>
+                    <p className="mt-2 text-xs text-slate-500 md:text-sm">
+                      {authUser
+                        ? "Tip: Try usernames like torvalds, gaearon, or vercel for instant demo-quality results."
+                        : "Sign in to unlock search history and full analytics."}
+                    </p>
+                  </>
+                )}
 
                 {loading && (
                   <div className="mt-4 rounded-2xl border border-white/10 bg-[#101a2e] p-4 text-left">
@@ -1485,7 +1495,7 @@ export default function App() {
       </div>
 
       {isHomeRoute && profile && (
-        <div ref={resultSectionRef} className="space-y-6">
+        <div ref={resultSectionRef} className="mt-8 space-y-6">
           <div className="rounded-2xl border border-white/10 bg-[#0f172a]/80 p-6">
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div className="flex items-center gap-4">

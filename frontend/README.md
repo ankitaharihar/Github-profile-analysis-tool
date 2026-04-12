@@ -1,6 +1,6 @@
 # Frontend
 
-This is the React + Vite frontend for the GitHub Profile Analysis Tool. It renders the dashboard UI, chart sections, and repository explorer that sit on top of the backend API.
+This is the React + Vite frontend for RepoInsight. It renders the dashboard UI, chart sections, and repository explorer that sit on top of the backend API.
 
 ## Stack
 
