@@ -594,6 +594,65 @@ app.get("/api/github/:username/repos", async (req, res) => {
   }
 });
 
+app.get("/api/github/:username/activity", async (req, res) => {
+  try {
+    const { username } = req.params;
+    const days = Math.min(Math.max(Number(req.query.days || 30), 7), 90);
+    const cacheKey = `activity:${username}:${days}`;
+    const cached = getCachedValue(cacheKey);
+
+    if (cached) {
+      return res.json(cached);
+    }
+
+    const response = await githubClient.get(`/users/${username}/events/public`, {
+      params: { per_page: 100 },
+    });
+
+    const start = Date.now() - days * 24 * 60 * 60 * 1000;
+    const events = response.data.filter((event) => new Date(event.created_at).getTime() >= start);
+
+    const labels = Array.from({ length: days }, (_, index) => {
+      const date = new Date();
+      date.setDate(date.getDate() - (days - 1 - index));
+      return date.toISOString().slice(0, 10);
+    });
+
+    const seriesMap = Object.fromEntries(labels.map((label) => [label, 0]));
+
+    events.forEach((event) => {
+      const key = new Date(event.created_at).toISOString().slice(0, 10);
+      if (seriesMap[key] === undefined) return;
+
+      if (event.type === "PushEvent") {
+        const commits = Array.isArray(event.payload?.commits) ? event.payload.commits.length : 1;
+        seriesMap[key] += commits;
+      } else {
+        seriesMap[key] += 1;
+      }
+    });
+
+    const payload = {
+      days,
+      totalCommits: events.reduce(
+        (acc, event) => acc + (event.type === "PushEvent" ? (event.payload?.commits?.length || 1) : 0),
+        0
+      ),
+      events,
+      series: labels.map((label) => ({
+        day: label.slice(5),
+        commits: seriesMap[label],
+      })),
+    };
+
+    setCachedValue(cacheKey, payload, 2 * 60 * 1000);
+
+    return res.json(payload);
+  } catch (error) {
+    return forwardGitHubError(res, error, "Failed to fetch activity");
+  }
+});
+
 app.get("/api/github/:username/languages", async (req, res) => {
   try {
     const { username } = req.params;

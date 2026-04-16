@@ -133,6 +133,184 @@ const buildAiInsights = (profile, repos, score) => {
   ];
 };
 
+const formatCompactNumber = (value = 0) =>
+  new Intl.NumberFormat(undefined, {
+    notation: value >= 1000 ? "compact" : "standard",
+    maximumFractionDigits: 1,
+  }).format(value || 0);
+
+const buildRecentActivitySeries = (events = [], fallbackRepos = []) => {
+  const today = new Date();
+  const labels = Array.from({ length: 30 }, (_, index) => {
+    const date = new Date(today);
+    date.setDate(today.getDate() - (29 - index));
+    return date.toISOString().slice(0, 10);
+  });
+
+  const counts = Object.fromEntries(labels.map((label) => [label, 0]));
+
+  events.forEach((event) => {
+    const timestamp = event?.created_at || event?.date;
+    if (!timestamp) return;
+
+    const eventDate = new Date(timestamp).toISOString().slice(0, 10);
+    if (counts[eventDate] === undefined) return;
+
+    if (event?.type === "PushEvent") {
+      const commits = Array.isArray(event?.payload?.commits) ? event.payload.commits.length : 1;
+      counts[eventDate] += commits;
+      return;
+    }
+
+    counts[eventDate] += 1;
+  });
+
+  if (Object.values(counts).every((value) => value === 0) && fallbackRepos.length > 0) {
+    fallbackRepos.forEach((repo) => {
+      const updatedAt = repo?.updated_at ? new Date(repo.updated_at) : null;
+      if (!updatedAt || Number.isNaN(updatedAt.getTime())) return;
+
+      const key = updatedAt.toISOString().slice(0, 10);
+      if (counts[key] !== undefined) {
+        counts[key] += 1;
+      }
+    });
+  }
+
+  return labels.map((label) => ({
+    day: label.slice(5),
+    commits: counts[label],
+  }));
+};
+
+const buildDeveloperSummary = (profile, repos, score, activitySeries = []) => {
+  if (!profile) return "";
+
+  const dominantLanguage = buildLanguageData(repos)[0]?.name || "mixed";
+  const totalStars = repos.reduce((acc, repo) => acc + (repo.stargazers_count || 0), 0);
+  const commitCount = activitySeries.reduce((acc, item) => acc + (item.commits || 0), 0);
+  const activeDays = activitySeries.filter((item) => item.commits > 0).length;
+
+  const focusArea = dominantLanguage === "mixed" ? "versatile" : dominantLanguage;
+  const momentum = activeDays >= 20 ? "consistent" : activeDays >= 10 ? "steady" : "emerging";
+  const shape = score >= 75 ? "advanced" : score >= 50 ? "intermediate" : "early-career";
+
+  return `${shape === "advanced" ? "Advanced" : shape === "intermediate" ? "Intermediate" : "Beginner"} ${focusArea}-focused developer with ${momentum} recent activity, ${repos.length} public repos, ${formatCompactNumber(totalStars)} stars, and ${formatCompactNumber(commitCount)} recent commits.`;
+};
+
+const buildStrengthsWeaknesses = (repos, activitySeries = []) => {
+  const languageCounts = buildLanguageData(repos);
+  const dominantLanguages = languageCounts.slice(0, 3).map((item) => item.name);
+  const activeDays = activitySeries.filter((item) => item.commits > 0).length;
+  const lowActivityDays = 30 - activeDays;
+
+  return {
+    strengths: dominantLanguages.length > 0
+      ? dominantLanguages.map((language) => `Strong signal in ${language}`)
+      : ["Broad curiosity across multiple stacks"],
+    weaknesses: [
+      lowActivityDays > 12 ? "Low recent activity cadence" : "Consistency could be sharper",
+      repos.length < 5 ? "Small public portfolio footprint" : "Public repo breadth is limited in a few categories",
+    ],
+  };
+};
+
+const buildCareerSuggestion = (score, profile, repos) => {
+  const dominantLanguage = buildLanguageData(repos)[0]?.name || "";
+  const level = score >= 75 ? "Advanced" : score >= 50 ? "Intermediate" : "Beginner";
+  const role = dominantLanguage.match(/(TypeScript|JavaScript|React|Vue|CSS|HTML)/i)
+    ? "Frontend"
+    : dominantLanguage.match(/(Python|Go|Java|C\+\+|Rust|Ruby|PHP|Node|Express)/i)
+      ? "Backend"
+      : "SDE";
+
+  return {
+    level,
+    role,
+    text: `${level} profile fit for ${role === "SDE" ? "SDE/Full Stack" : `${role} engineering`} roles.`,
+    nextStep: score >= 70 ? "Focus on system design case studies and polished READMEs." : "Improve testing coverage, consistency, and one standout repo.",
+  };
+};
+
+const buildBestRepoHighlight = (repos) => {
+  if (!repos.length) {
+    return { highestStars: null, mostRecent: null };
+  }
+
+  const highestStars = [...repos].sort((a, b) => (b.stargazers_count || 0) - (a.stargazers_count || 0))[0];
+  const mostRecent = [...repos].sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at))[0];
+
+  return { highestStars, mostRecent };
+};
+
+const buildSkillScoreBreakdown = (profile, repos, activitySeries = []) => {
+  const stars = repos.reduce((acc, repo) => acc + (repo.stargazers_count || 0), 0);
+  const commits = activitySeries.reduce((acc, item) => acc + (item.commits || 0), 0);
+  const activeDays = activitySeries.filter((item) => item.commits > 0).length;
+
+  return {
+    code: Math.min(100, Math.round(repos.length * 4 + stars * 1.5)),
+    consistency: Math.min(100, Math.round(activeDays * 3 + commits * 2)),
+    collaboration: Math.min(100, Math.round((profile?.followers || 0) * 3 + repos.filter((repo) => repo.fork).length * 4)),
+  };
+};
+
+const buildTeamInsights = (members = []) => {
+  if (members.length === 0) {
+    return {
+      health: 0,
+      leaderboard: null,
+      managerInsight: "Add multiple users to compare team activity and skill coverage.",
+    };
+  }
+
+  const ranked = [...members].sort((a, b) => b.score - a.score);
+  const averageScore = Math.round(ranked.reduce((acc, item) => acc + item.score, 0) / ranked.length);
+  const topLanguages = ranked.flatMap((item) => item.languages.slice(0, 2));
+  const languageCoverage = new Set(topLanguages);
+  const teamWeakness = languageCoverage.size <= 2
+    ? "Team is concentrated in a narrow stack"
+    : "Team could broaden architecture and frontend depth";
+
+  return {
+    health: averageScore,
+    leaderboard: ranked[0],
+    managerInsight: `Team is strong in ${ranked[0]?.primaryLanguage || "core engineering"} but ${teamWeakness.toLowerCase()}.`,
+  };
+};
+
+const normalizeUsernameList = (value) =>
+  String(value || "")
+    .split(/[,\n\s]+/)
+    .map((item) => item.trim().replace(/^@/, ""))
+    .filter(Boolean)
+    .filter((item, index, self) => self.indexOf(item) === index)
+    .slice(0, 5);
+
+const fetchGitHubProfileBundle = async (username) => {
+  const normalizedUser = username.trim();
+
+  const [profileRes, repoRes, activityRes] = await Promise.all([
+    axios.get(`${API_BASE_URL}/api/github/${normalizedUser}`),
+    axios.get(`${API_BASE_URL}/api/github/${normalizedUser}/repos?per_page=100`),
+    axios.get(`${API_BASE_URL}/api/github/${normalizedUser}/activity?days=30`).catch(() => ({ data: { events: [], series: [] } })),
+  ]);
+
+  const repoPayload = repoRes.data;
+  const repos = Array.isArray(repoPayload)
+    ? repoPayload
+    : Array.isArray(repoPayload?.data)
+      ? repoPayload.data
+      : [];
+
+  return {
+    profile: profileRes.data,
+    repos,
+    activity: activityRes.data?.series || buildRecentActivitySeries(activityRes.data?.events || [], repos),
+    rawActivity: activityRes.data?.events || [],
+  };
+};
+
 const readCookie = (name) => {
   if (typeof document === "undefined") return null;
 
@@ -552,6 +730,7 @@ export default function App() {
   const [username, setUsername] = useState("");
   const [profile, setProfile] = useState(null);
   const [repos, setRepos] = useState([]);
+  const [activitySeries, setActivitySeries] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [showLoginPage, setShowLoginPage] = useState(false);
@@ -565,6 +744,11 @@ export default function App() {
   const [includeForkRepos, setIncludeForkRepos] = useState(true);
   const [suggestions, setSuggestions] = useState([]);
   const [showDropdown, setShowDropdown] = useState(false);
+  const [teamInput, setTeamInput] = useState("");
+  const [comparisonUsers, setComparisonUsers] = useState([]);
+  const [comparisonProfiles, setComparisonProfiles] = useState([]);
+  const [comparisonLoading, setComparisonLoading] = useState(false);
+  const [comparisonError, setComparisonError] = useState("");
   const profileMenuRef = useRef(null);
   const exploreMenuRef = useRef(null);
   const searchPanelRef = useRef(null);
@@ -753,6 +937,7 @@ export default function App() {
     setShowExploreMenu(false);
     setProfile(null);
     setRepos([]);
+    setActivitySeries([]);
     setLanguageData([]);
     setUsername("");
     setSuggestions([]);
@@ -764,6 +949,10 @@ export default function App() {
     setSelectedLanguage("all");
     setRepoSortBy("stars_desc");
     setIncludeForkRepos(true);
+    setTeamInput("");
+    setComparisonUsers([]);
+    setComparisonProfiles([]);
+    setComparisonError("");
     setSubscription({ plan: "free", status: "inactive", currentPeriodEnd: null, cancelAtPeriodEnd: false });
   };
 
@@ -851,6 +1040,68 @@ export default function App() {
     }
   };
 
+  const loadComparisonUsers = async (usernames, preserveExisting = false) => {
+    const normalizedUsers = normalizeUsernameList(usernames).filter(Boolean);
+
+    if (normalizedUsers.length === 0) {
+      setComparisonError("Add at least one username to compare.");
+      return;
+    }
+
+    setComparisonLoading(true);
+    setComparisonError("");
+
+    try {
+      const bundles = await Promise.all(
+        normalizedUsers.map(async (candidate) => {
+          const bundle = await fetchGitHubProfileBundle(candidate);
+          const candidateScore = calculateScore(bundle.profile, bundle.repos);
+          const candidateLanguages = buildLanguageData(bundle.repos);
+          return {
+            login: bundle.profile.login,
+            profile: bundle.profile,
+            repos: bundle.repos,
+            activitySeries: bundle.activity,
+            score: candidateScore,
+            totalStars: bundle.repos.reduce((acc, repo) => acc + (repo.stargazers_count || 0), 0),
+            followers: bundle.profile.followers || 0,
+            languages: candidateLanguages,
+            primaryLanguage: candidateLanguages[0]?.name || "Mixed",
+            collaborationScore: buildSkillScoreBreakdown(bundle.profile, bundle.repos, bundle.activity).collaboration,
+            managerSummary: buildDeveloperSummary(bundle.profile, bundle.repos, candidateScore, bundle.activity),
+          };
+        })
+      );
+
+      setComparisonUsers((currentUsers) => {
+        const nextUsers = preserveExisting ? Array.from(new Set([...currentUsers, ...normalizedUsers])) : normalizedUsers;
+        return nextUsers.slice(0, 5);
+      });
+      setComparisonProfiles((currentProfiles) => {
+        if (preserveExisting && currentProfiles.length > 0) {
+          const merged = [...currentProfiles];
+          bundles.forEach((bundle) => {
+            const existingIndex = merged.findIndex((item) => item.login === bundle.login);
+            if (existingIndex >= 0) {
+              merged[existingIndex] = bundle;
+            } else {
+              merged.push(bundle);
+            }
+          });
+          return merged.slice(0, 5);
+        }
+
+        return bundles.slice(0, 5);
+      });
+      setTeamInput("");
+    } catch (loadError) {
+      console.log(loadError);
+      setComparisonError("Unable to compare one or more users right now.");
+    } finally {
+      setComparisonLoading(false);
+    }
+  };
+
   const analyzeProfile = async (user = username) => {
     if (!authUser) {
       setShowLoginPage(true);
@@ -871,29 +1122,22 @@ export default function App() {
     setError("");
     setProfile(null);
     setRepos([]);
+    setActivitySeries([]);
     setSuggestions([]);
     setShowDropdown(false);
 
     try {
-      const [profileRes, repoRes] = await Promise.all([
-        axios.get(`${API_BASE_URL}/api/github/${normalizedUser}`),
-        axios.get(`${API_BASE_URL}/api/github/${normalizedUser}/repos?per_page=100`)
-      ]);
+      const bundle = await fetchGitHubProfileBundle(normalizedUser);
 
-      const repoPayload = repoRes.data;
-      const repoList = Array.isArray(repoPayload)
-        ? repoPayload
-        : Array.isArray(repoPayload?.data)
-          ? repoPayload.data
-          : [];
-
-      setProfile(profileRes.data);
-      setRepos(repoList);
-      setLanguageData(buildLanguageData(repoList));
+      setProfile(bundle.profile);
+      setRepos(bundle.repos);
+      setActivitySeries(bundle.activity);
+      setLanguageData(buildLanguageData(bundle.repos));
       setRepoSearchQuery("");
       setSelectedLanguage("all");
       setRepoSortBy("stars_desc");
       setIncludeForkRepos(true);
+      setComparisonError("");
 
       setHistory((prevHistory) => {
         const updated = normalizeHistoryList([
@@ -924,6 +1168,11 @@ export default function App() {
   const score = calculateScore(profile, repos);
   const level = getLevel(score);
   const scoreTone = getScoreTone(score);
+  const skillBreakdown = useMemo(() => buildSkillScoreBreakdown(profile, repos, activitySeries), [profile, repos, activitySeries]);
+  const developerSummary = useMemo(() => buildDeveloperSummary(profile, repos, score, activitySeries), [profile, repos, score, activitySeries]);
+  const strengthsWeaknesses = useMemo(() => buildStrengthsWeaknesses(repos, activitySeries), [repos, activitySeries]);
+  const careerSuggestion = useMemo(() => buildCareerSuggestion(score, profile, repos), [score, profile, repos]);
+  const bestRepoHighlight = useMemo(() => buildBestRepoHighlight(repos), [repos]);
   const availableLanguages = useMemo(
     () =>
       Array.from(new Set(repos.map((repo) => repo.language).filter(Boolean))).sort((a, b) =>
@@ -970,6 +1219,7 @@ export default function App() {
     return (filteredRepos.filter((repo) => repo.fork).length / filteredRepos.length) * 100;
   }, [filteredRepos]);
   const aiInsights = useMemo(() => buildAiInsights(profile, repos, score), [profile, repos, score]);
+  const teamInsights = useMemo(() => buildTeamInsights(comparisonProfiles), [comparisonProfiles]);
   const isUserNotFoundError = error.toLowerCase().includes("user not found");
   const errorTitle = isUserNotFoundError ? "User not found" : "Unable to fetch data";
   const errorHint = isUserNotFoundError
@@ -986,6 +1236,17 @@ export default function App() {
   const canExportCsv = authUser && ["pro", "team"].includes(subscription.plan);
   const canUseProFeatures = authUser && ["pro", "team"].includes(subscription.plan);
   const canUseTeamDashboards = authUser && subscription.plan === "team";
+  const activityChartData = useMemo(() => activitySeries.map((item) => ({ name: item.day, value: item.commits })), [activitySeries]);
+  const comparisonChartData = useMemo(
+    () =>
+      comparisonProfiles.map((member) => ({
+        username: member.login,
+        score: member.score,
+        stars: member.totalStars,
+        followers: member.followers,
+      })),
+    [comparisonProfiles]
+  );
 
   const loginProviders = [
     {
@@ -1841,87 +2102,298 @@ export default function App() {
             </div>
           </div>
 
-          <div className="grid gap-6 lg:grid-cols-2">
-            <div className="rounded-2xl border border-fuchsia-400/20 bg-[#10172a]/90 p-6">
-              <h2 className="mb-4 text-lg font-semibold text-white">AI Insights</h2>
-              {canUseProFeatures ? (
+          <div className="grid gap-6 xl:grid-cols-[1.1fr_0.95fr_1fr]">
+            <div className="rounded-2xl border border-white/10 bg-[#0f172a]/80 p-6">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Developer Summary</div>
+                  <h2 className="mt-1 text-xl font-bold text-white">AI-generated profile overview</h2>
+                </div>
+                <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-slate-300">
+                  Score {score}
+                </div>
+              </div>
+
+              <p className="mt-4 text-sm leading-6 text-slate-300">{developerSummary}</p>
+
+              <div className="mt-5 grid gap-3 md:grid-cols-3">
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                  <div className="text-xs uppercase tracking-[0.12em] text-slate-400">Code</div>
+                  <div className="mt-2 text-2xl font-bold text-white">{skillBreakdown.code}</div>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                  <div className="text-xs uppercase tracking-[0.12em] text-slate-400">Consistency</div>
+                  <div className="mt-2 text-2xl font-bold text-white">{skillBreakdown.consistency}</div>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                  <div className="text-xs uppercase tracking-[0.12em] text-slate-400">Collaboration</div>
+                  <div className="mt-2 text-2xl font-bold text-white">{skillBreakdown.collaboration}</div>
+                </div>
+              </div>
+
+              <div className="mt-5 rounded-2xl border border-white/10 bg-white/5 p-4">
+                <div className="text-xs uppercase tracking-[0.16em] text-slate-400">Career Suggestion</div>
+                <div className="mt-2 text-lg font-semibold text-white">{careerSuggestion.text}</div>
+                <p className="mt-1 text-sm text-slate-300">{careerSuggestion.nextStep}</p>
+              </div>
+
+              <div className="mt-5 grid gap-3 md:grid-cols-2">
+                <div className="rounded-2xl border border-emerald-400/20 bg-emerald-500/10 p-4">
+                  <div className="text-xs uppercase tracking-[0.16em] text-emerald-200">Best repo</div>
+                  <div className="mt-2 text-sm font-semibold text-white">
+                    {bestRepoHighlight.highestStars ? bestRepoHighlight.highestStars.name : "No repository found"}
+                  </div>
+                  <p className="mt-1 text-xs text-emerald-100/80">
+                    {bestRepoHighlight.highestStars ? `Highest stars: ${bestRepoHighlight.highestStars.stargazers_count || 0}` : "Connect a public repo to highlight a winner."}
+                  </p>
+                </div>
+
+                <div className="rounded-2xl border border-cyan-400/20 bg-cyan-500/10 p-4">
+                  <div className="text-xs uppercase tracking-[0.16em] text-cyan-200">Most recent repo</div>
+                  <div className="mt-2 text-sm font-semibold text-white">
+                    {bestRepoHighlight.mostRecent ? bestRepoHighlight.mostRecent.name : "No repository found"}
+                  </div>
+                  <p className="mt-1 text-xs text-cyan-100/80">
+                    {bestRepoHighlight.mostRecent ? new Date(bestRepoHighlight.mostRecent.updated_at).toLocaleDateString() : "Recent activity will appear here."}
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-5 space-y-2">
+                <h3 className="text-sm font-semibold text-white">Top repositories</h3>
                 <div className="space-y-2">
-                  {aiInsights.map((insight) => (
-                    <div key={insight} className="rounded-xl border border-white/8 bg-white/5 px-3 py-2 text-sm text-slate-200">
-                      {insight}
-                    </div>
+                  {topRepos.slice(0, 3).map((repo) => (
+                    <a
+                      key={repo.id}
+                      href={repo.html_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2 transition hover:bg-white/10"
+                    >
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-semibold text-slate-100">{repo.name}</div>
+                        <div className="text-xs text-slate-400">{repo.language || "Unknown"}</div>
+                      </div>
+                      <div className="ml-3 text-xs text-amber-200">⭐ {repo.stargazers_count}</div>
+                    </a>
                   ))}
                 </div>
-              ) : (
-                <div className="rounded-xl border border-dashed border-fuchsia-400/30 bg-fuchsia-500/10 px-4 py-4 text-sm text-fuchsia-100">
-                  <div className="font-semibold">Locked for Free Plan</div>
-                  <p className="mt-1 text-fuchsia-100/85">Upgrade to Pro to unlock AI-powered insights and resume export.</p>
-                  <button
-                    type="button"
-                    onClick={() => navigate("/pricing")}
-                    className="mt-3 rounded-lg border border-fuchsia-300/30 bg-fuchsia-500/20 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-fuchsia-500/30"
-                  >
-                    View Pro Plan
-                  </button>
+              </div>
+            </div>
+
+            <div className={`relative overflow-hidden rounded-2xl border border-fuchsia-400/20 bg-[#10172a]/90 p-6 ${canUseProFeatures ? "" : "premium-locked"}`}>
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">AI Insights</div>
+                  <h2 className="mt-1 text-xl font-bold text-white">Strengths and weaknesses</h2>
+                </div>
+                <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-slate-300">
+                  {canUseProFeatures ? "Unlocked" : "Pro"}
+                </span>
+              </div>
+
+              <div className={`mt-4 space-y-3 ${canUseProFeatures ? "" : "premium-locked__content"}`}>
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-slate-200">
+                  <div className="text-xs uppercase tracking-[0.14em] text-slate-400">Strengths</div>
+                  <div className="mt-2 space-y-2">
+                    {strengthsWeaknesses.strengths.map((item) => (
+                      <div key={item} className="rounded-xl border border-emerald-400/20 bg-emerald-500/10 px-3 py-2 text-emerald-100">
+                        {item}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-slate-200">
+                  <div className="text-xs uppercase tracking-[0.14em] text-slate-400">Weaknesses</div>
+                  <div className="mt-2 space-y-2">
+                    {strengthsWeaknesses.weaknesses.map((item) => (
+                      <div key={item} className="rounded-xl border border-amber-400/20 bg-amber-500/10 px-3 py-2 text-amber-100">
+                        {item}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {aiInsights.map((insight) => (
+                  <div key={insight} className="rounded-xl border border-white/8 bg-white/5 px-3 py-2 text-sm text-slate-200">
+                    {insight}
+                  </div>
+                ))}
+
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-slate-200">
+                  <div className="text-xs uppercase tracking-[0.14em] text-slate-400">Profile score formula</div>
+                  <div className="mt-2 text-lg font-semibold text-white">repos + stars + consistency + followers</div>
+                  <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-300">
+                    <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">repos: {repos.length}</span>
+                    <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">stars: {repos.reduce((acc, repo) => acc + (repo.stargazers_count || 0), 0)}</span>
+                    <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">commits: {formatCompactNumber(activitySeries.reduce((acc, item) => acc + (item.commits || 0), 0))}</span>
+                    <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">followers: {profile?.followers || 0}</span>
+                  </div>
+                </div>
+              </div>
+
+              {!canUseProFeatures && (
+                <div className="premium-locked__overlay absolute inset-0 flex items-center justify-center p-6">
+                  <div className="max-w-sm rounded-3xl border border-fuchsia-400/30 bg-[#0b1020]/95 p-5 text-center shadow-2xl shadow-black/40">
+                    <div className="text-xs uppercase tracking-[0.18em] text-fuchsia-200">Pro feature</div>
+                    <div className="mt-2 text-lg font-bold text-white">Unlock AI insights</div>
+                    <p className="mt-2 text-sm text-slate-300">Upgrade to Pro for AI-generated text, resume export, and advanced analytics.</p>
+                    <button
+                      type="button"
+                      onClick={() => navigate("/pricing")}
+                      className="mt-4 rounded-xl border border-fuchsia-300/30 bg-fuchsia-500/20 px-4 py-2 text-sm font-semibold text-white transition hover:bg-fuchsia-500/30"
+                    >
+                      View Pro Plan
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
 
-            <div className="rounded-2xl border border-cyan-400/20 bg-[#0d1a2b]/90 p-6">
-              <h2 className="mb-4 text-lg font-semibold text-white">Top Repositories</h2>
-              <div className="space-y-2">
-                {topRepos.map((repo) => (
-                  <a
-                    key={repo.id}
-                    href={repo.html_url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="top-repo-row flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2 transition hover:bg-white/10"
-                  >
-                    <div className="min-w-0">
-                      <div className="truncate text-sm font-semibold text-slate-100">{repo.name}</div>
-                      <div className="text-xs text-slate-400">{repo.language || "Unknown"}</div>
-                    </div>
-                    <div className="ml-3 text-xs text-amber-200">⭐ {repo.stargazers_count}</div>
-                  </a>
-                ))}
+            <div className={`relative overflow-hidden rounded-2xl border border-emerald-400/20 bg-[#0d1f1a]/85 p-6 ${canUseTeamDashboards ? "" : "premium-locked"}`}>
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Team Dashboard</div>
+                  <h2 className="mt-1 text-xl font-bold text-white">Compare multiple GitHub users</h2>
+                </div>
+                <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-slate-300">
+                  {canUseTeamDashboards ? `${comparisonProfiles.length || 0} users` : "Team"}
+                </span>
               </div>
-            </div>
-          </div>
 
-          <div className="rounded-2xl border border-emerald-400/20 bg-[#0d1f1a]/85 p-6">
-            <h2 className="mb-3 text-lg font-semibold text-white">Team Dashboards</h2>
-            {canUseTeamDashboards ? (
-              <div className="grid gap-3 md:grid-cols-3">
-                <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-                  <div className="text-xs uppercase tracking-[0.12em] text-emerald-200">Comparison</div>
-                  <div className="mt-1 text-2xl font-bold text-white">{Math.max(1, Math.round(score / 20))}/5</div>
-                  <p className="mt-1 text-xs text-slate-300">Team percentile bucket</p>
+              <div className={`mt-4 space-y-4 ${canUseTeamDashboards ? "" : "premium-locked__content"}`}>
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                  <div className="text-xs uppercase tracking-[0.14em] text-slate-400">Multi-user input</div>
+                  <div className="mt-2 grid gap-2">
+                    <input
+                      value={teamInput}
+                      onChange={(event) => setTeamInput(event.target.value)}
+                      placeholder="Add usernames separated by commas, e.g. torvalds, gaearon"
+                      className="h-11 rounded-xl border border-white/10 bg-[#09111f] px-3 text-sm text-slate-100 outline-none placeholder:text-slate-500 focus:border-emerald-400/45"
+                      disabled={!canUseTeamDashboards || comparisonLoading}
+                    />
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => loadComparisonUsers(teamInput, true)}
+                        disabled={!canUseTeamDashboards || comparisonLoading}
+                        className="rounded-xl border border-emerald-400/20 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {comparisonLoading ? "Loading..." : "Add to team"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => profile?.login && loadComparisonUsers([profile.login], false)}
+                        disabled={!canUseTeamDashboards || !profile || comparisonLoading}
+                        className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-slate-100 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        Use current profile
+                      </button>
+                    </div>
+                    {comparisonUsers.length > 0 && (
+                      <div className="flex flex-wrap gap-2 text-xs text-slate-300">
+                        {comparisonUsers.map((user) => (
+                          <span key={user} className="rounded-full border border-white/10 bg-white/5 px-3 py-1">@{user}</span>
+                        ))}
+                      </div>
+                    )}
+                    {comparisonError && <div className="text-sm text-rose-200">{comparisonError}</div>}
+                  </div>
                 </div>
-                <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-                  <div className="text-xs uppercase tracking-[0.12em] text-emerald-200">Collaboration</div>
-                  <div className="mt-1 text-2xl font-bold text-white">{Math.max(1, Math.round((profile.followers || 0) / 25))}</div>
-                  <p className="mt-1 text-xs text-slate-300">Cross-profile interaction signal</p>
+
+                <div className="grid gap-3 md:grid-cols-3">
+                  <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                    <div className="text-xs uppercase tracking-[0.12em] text-emerald-200">Team health</div>
+                    <div className="mt-2 text-3xl font-bold text-white">{teamInsights.health}</div>
+                    <p className="mt-1 text-xs text-slate-300">Average score across compared users</p>
+                  </div>
+                  <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                    <div className="text-xs uppercase tracking-[0.12em] text-emerald-200">Leaderboard</div>
+                    <div className="mt-2 text-lg font-bold text-white">
+                      {teamInsights.leaderboard ? `@${teamInsights.leaderboard.login}` : "No team yet"}
+                    </div>
+                    <p className="mt-1 text-xs text-slate-300">Top performer by score</p>
+                  </div>
+                  <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                    <div className="text-xs uppercase tracking-[0.12em] text-emerald-200">Collaboration</div>
+                    <div className="mt-2 text-3xl font-bold text-white">
+                      {comparisonProfiles.length > 0
+                        ? Math.round(
+                            comparisonProfiles.reduce((acc, item) => acc + item.collaborationScore, 0) /
+                              comparisonProfiles.length
+                          )
+                        : 0}
+                    </div>
+                    <p className="mt-1 text-xs text-slate-300">Average collaboration score</p>
+                  </div>
                 </div>
-                <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-                  <div className="text-xs uppercase tracking-[0.12em] text-emerald-200">Activity Index</div>
-                  <div className="mt-1 text-2xl font-bold text-white">{Math.min(100, Math.round((100 - forkRatio) + averageStars))}</div>
-                  <p className="mt-1 text-xs text-slate-300">Shared dashboard momentum score</p>
+
+                <div className="overflow-hidden rounded-2xl border border-white/10 bg-[#08111d]">
+                  <div className="border-b border-white/10 px-4 py-3 text-sm font-semibold text-slate-200">Comparison table</div>
+                  <div className="overflow-x-auto">
+                    <table className="comparison-table min-w-full text-left text-sm">
+                      <thead className="bg-white/5 text-xs uppercase tracking-[0.12em] text-slate-400">
+                        <tr>
+                          <th className="px-4 py-3">User</th>
+                          <th className="px-4 py-3">Score</th>
+                          <th className="px-4 py-3">Repos</th>
+                          <th className="px-4 py-3">Stars</th>
+                          <th className="px-4 py-3">Followers</th>
+                          <th className="px-4 py-3">Primary language</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {comparisonChartData.length > 0 ? (
+                          comparisonChartData.map((member) => {
+                            const memberProfile = comparisonProfiles.find((item) => item.login === member.username);
+
+                            return (
+                              <tr key={member.username} className="border-t border-white/10 text-slate-200">
+                                <td className="px-4 py-3 font-semibold">@{member.username}</td>
+                                <td className="px-4 py-3">{memberProfile?.score || 0}</td>
+                                <td className="px-4 py-3">{memberProfile?.repos.length || 0}</td>
+                                <td className="px-4 py-3">{member.stars}</td>
+                                <td className="px-4 py-3">{member.followers}</td>
+                                <td className="px-4 py-3">{memberProfile?.primaryLanguage || "Mixed"}</td>
+                              </tr>
+                            );
+                          })
+                        ) : (
+                          <tr>
+                            <td className="px-4 py-4 text-slate-400" colSpan="6">
+                              Add at least one username to compare side by side.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-slate-200">
+                  <div className="text-xs uppercase tracking-[0.12em] text-emerald-200">Manager insights</div>
+                  <div className="mt-2 font-medium text-white">{teamInsights.managerInsight}</div>
                 </div>
               </div>
-            ) : (
-              <div className="rounded-xl border border-dashed border-emerald-300/30 bg-emerald-500/10 p-4 text-sm text-emerald-100">
-                <div className="font-semibold">Team feature locked</div>
-                <p className="mt-1 text-emerald-100/85">Upgrade to Team for multi-user dashboards, collaboration analytics, and team comparisons.</p>
-                <button
-                  type="button"
-                  onClick={() => navigate("/pricing")}
-                  className="mt-3 rounded-lg border border-emerald-300/30 bg-emerald-500/20 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-500/30"
-                >
-                  View Team Plan
-                </button>
-              </div>
-            )}
+
+              {!canUseTeamDashboards && (
+                <div className="premium-locked__overlay absolute inset-0 flex items-center justify-center p-6">
+                  <div className="max-w-sm rounded-3xl border border-emerald-400/30 bg-[#07120f]/95 p-5 text-center shadow-2xl shadow-black/40">
+                    <div className="text-xs uppercase tracking-[0.18em] text-emerald-200">Team feature</div>
+                    <div className="mt-2 text-lg font-bold text-white">Unlock multi-user analytics</div>
+                    <p className="mt-2 text-sm text-slate-300">Upgrade to Team for comparisons, leaderboard views, and manager insights.</p>
+                    <button
+                      type="button"
+                      onClick={() => navigate("/pricing")}
+                      className="mt-4 rounded-xl border border-emerald-300/30 bg-emerald-500/20 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500/30"
+                    >
+                      View Team Plan
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="grid gap-6 md:grid-cols-2">
@@ -1953,7 +2425,7 @@ export default function App() {
 
             <div className="col-span-2 rounded-2xl border border-white/10 bg-[#0f172a]/80 p-6">
               <h2 className="mb-4">Activity</h2>
-              <ActivityChart theme={theme} />
+              <ActivityChart theme={theme} data={activityChartData} />
             </div>
           </div>
         </div>

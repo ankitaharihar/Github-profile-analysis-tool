@@ -97,9 +97,9 @@ export function RadarChartBox({ repos, theme = "dark" }) {
 }
 
 // 🔥 ACTIVITY CHART (Glow)
-export function ActivityChart({ theme = "dark" }) {
+export function ActivityChart({ theme = "dark", data = [] }) {
   const isLight = theme === "light";
-  const data = [
+  const fallbackData = [
     { name: "Apr", value: 40 },
     { name: "May", value: 70 },
     { name: "Jun", value: 20 },
@@ -114,9 +114,11 @@ export function ActivityChart({ theme = "dark" }) {
     { name: "Mar", value: 75 }
   ];
 
+  const chartData = data.length > 0 ? data : fallbackData;
+
   return (
     <ResponsiveContainer width="100%" height={260}>
-      <AreaChart data={data}>
+      <AreaChart data={chartData}>
         <defs>
           <linearGradient id="colorGradient" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="#6366f1" stopOpacity={0.8} />
