@@ -901,8 +901,7 @@ export default function App() {
   }, [username, showDropdown]);
 
   const startOAuthLogin = (provider) => {
-    if (!oauthConfig[provider]) return;
-
+    // Let backend decide whether provider is configured so users always get a real response.
     window.location.href = `${API_BASE_URL}/auth/${provider}`;
   };
 
@@ -1839,8 +1838,7 @@ export default function App() {
                     <button
                       key={provider.key}
                       onClick={() => startOAuthLogin(provider.key)}
-                      disabled={!oauthConfig[provider.key]}
-                      className="login-provider w-full rounded-2xl border border-white/10 bg-[#18233a]/90 px-4 py-3 text-left transition hover:border-fuchsia-400/35 hover:bg-[#1d2a45] disabled:cursor-not-allowed disabled:opacity-50"
+                      className="login-provider w-full rounded-2xl border border-white/10 bg-[#18233a]/90 px-4 py-3 text-left transition hover:border-fuchsia-400/35 hover:bg-[#1d2a45]"
                     >
                       <div className="login-provider__head flex items-center gap-3">
                         <div className="flex items-center gap-3">
