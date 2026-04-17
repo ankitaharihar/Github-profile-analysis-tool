@@ -74,13 +74,21 @@ npm run lint
 3. Add environment variable:
    - **Key:** `VITE_API_BASE_URL`
    - **Value:** Your backend API URL (e.g., `https://your-backend.herokuapp.com`)
-4. Deploy!
+4. Optional (recommended for stable username suggestions):
+   - **Key:** `GITHUB_TOKEN`
+   - **Value:** A GitHub personal access token with public-read access
+5. Deploy!
 
 **If OAuth buttons are disabled on the deployed site:**
 
 - Verify `VITE_API_BASE_URL` is set correctly
 - Ensure your backend is running and reachable
 - Check that backend OAuth credentials are configured
+
+### Username Suggestions On Netlify
+
+- The frontend now falls back to Netlify Function `/.netlify/functions/search-users` when backend search is unavailable.
+- If suggestions are still limited or intermittent, set `GITHUB_TOKEN` in Netlify env vars and redeploy.
 
 ## OAuth Setup Checklist
 

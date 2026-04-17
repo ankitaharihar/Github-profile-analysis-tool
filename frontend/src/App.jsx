@@ -12,6 +12,11 @@ import {
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
 const TRENDING_USERS = ["torvalds", "gaearon", "sindresorhus", "yyx990803", "vercel"];
 
+const isLocalApiInProduction =
+  typeof window !== "undefined" &&
+  window.location.hostname !== "localhost" &&
+  /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(String(API_BASE_URL || "").trim());
+
 const buildLocalSuggestions = (query) => {
   const normalized = String(query || "").trim().toLowerCase();
   if (!normalized) return [];
@@ -24,6 +29,31 @@ const buildLocalSuggestions = (query) => {
       login,
       avatar_url: `https://github.com/${login}.png?size=40`,
     }));
+};
+
+const normalizeSuggestionList = (items = []) => {
+  const seen = new Set();
+
+  return items
+    .filter((item) => item && item.login)
+    .filter((item) => {
+      const key = String(item.login).toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 8);
+};
+
+const buildTypedSuggestion = (query) => {
+  const login = String(query || "").trim();
+  if (!login) return null;
+
+  return {
+    id: `typed-${login.toLowerCase()}`,
+    login,
+    avatar_url: `https://github.com/${login}.png?size=40`,
+  };
 };
 
 const escapeCsvCell = (value) => {
@@ -1063,17 +1093,41 @@ export default function App() {
       return;
     }
 
+    const localItems = buildLocalSuggestions(normalizedValue);
+    const typedItem = buildTypedSuggestion(normalizedValue);
+    const baseSuggestions = normalizeSuggestionList([
+      ...(typedItem ? [typedItem] : []),
+      ...localItems,
+    ]);
+
+    setSuggestions(baseSuggestions);
+    setShowDropdown(true);
+
+    const hasCustomBackend =
+      Boolean(String(API_BASE_URL || "").trim()) && !isLocalApiInProduction;
+
     try {
-      const res = await axios.get(`${API_BASE_URL}/api/github/search/users?q=${encodeURIComponent(normalizedValue)}&per_page=8`, {
-        timeout: 5000,
-      });
-      const items = Array.isArray(res.data?.items) ? res.data.items.slice(0, 5) : [];
-      setSuggestions(items);
-      setShowDropdown(true);
-    } catch {
-      try {
-        // Fallback for deployed frontend when backend URL/env is not reachable.
-        const fallbackRes = await axios.get("https://api.github.com/search/users", {
+      const requestList = [];
+
+      if (hasCustomBackend) {
+        requestList.push(
+          axios.get(`${API_BASE_URL}/api/github/search/users`, {
+            params: { q: normalizedValue, per_page: 8 },
+            timeout: 5000,
+          })
+        );
+      }
+
+      // Netlify serverless fallback for deployed frontend-only environments.
+      requestList.push(
+        axios.get("/.netlify/functions/search-users", {
+          params: { q: normalizedValue, per_page: 8 },
+          timeout: 5000,
+        })
+      );
+
+      requestList.push(
+        axios.get("https://api.github.com/search/users", {
           params: {
             q: normalizedValue,
             per_page: 8,
@@ -1082,18 +1136,29 @@ export default function App() {
           headers: {
             Accept: "application/vnd.github+json",
           },
-        });
+        })
+      );
 
-        const fallbackItems = Array.isArray(fallbackRes.data?.items)
-          ? fallbackRes.data.items.slice(0, 5)
-          : [];
-        setSuggestions(fallbackItems);
-        setShowDropdown(true);
-      } catch {
-        const localItems = buildLocalSuggestions(normalizedValue);
-        setSuggestions(localItems);
-        setShowDropdown(true);
+      let resolvedItems = [];
+
+      for (const request of requestList) {
+        try {
+          const res = await request;
+          const items = Array.isArray(res.data?.items) ? res.data.items.slice(0, 5) : [];
+          if (items.length > 0) {
+            resolvedItems = items;
+            break;
+          }
+        } catch {
+          // Try the next source.
+        }
       }
+
+      setSuggestions(normalizeSuggestionList([...resolvedItems, ...baseSuggestions]));
+      setShowDropdown(true);
+    } catch {
+      setSuggestions(baseSuggestions);
+      setShowDropdown(true);
     }
   };
 
@@ -1682,6 +1747,7 @@ export default function App() {
                       value={username}
                       onChange={(event) => {
                         setUsername(event.target.value);
+                        setShowDropdown(true);
                       }}
                       onFocus={() => setShowDropdown(true)}
                       onKeyDown={(event) => event.key === "Enter" && analyzeProfile()}
