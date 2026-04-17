@@ -62,6 +62,26 @@ npm run lint
 - Shared chart components live in [src/components/Charts.jsx](src/components/Charts.jsx).
 - The repository file browser lives in [src/components/FileExplorer.jsx](src/components/FileExplorer.jsx) and [src/components/RepoModal.jsx](src/components/RepoModal.jsx).
 
+## Deployment Notes
+
+### Netlify Deployment
+
+1. Connect your GitHub repo to Netlify
+2. Set build settings:
+   - **Base directory:** `frontend`
+   - **Build command:** `npm run build`
+   - **Publish directory:** `dist`
+3. Add environment variable:
+   - **Key:** `VITE_API_BASE_URL`
+   - **Value:** Your backend API URL (e.g., `https://your-backend.herokuapp.com`)
+4. Deploy!
+
+**If OAuth buttons are disabled on the deployed site:**
+
+- Verify `VITE_API_BASE_URL` is set correctly
+- Ensure your backend is running and reachable
+- Check that backend OAuth credentials are configured
+
 ## OAuth Setup Checklist
 
 If the login buttons are disabled, the backend OAuth values are missing.

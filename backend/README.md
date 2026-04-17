@@ -147,3 +147,43 @@ All callbacks redirect back to the frontend and store the signed-in user in a br
 - Requests are made against the public GitHub REST API through the backend proxy.
 - CORS is enabled so the frontend can call the backend from `localhost` during development.
 - Login notifications are emailed after OAuth succeeds, if SMTP credentials are configured.
+
+## Deployment
+
+### Deploy Platforms
+
+Popular options:
+
+- **Heroku** (free tier available, deprecated)
+- **Railway** (easy, recommended)
+- **Vercel** (supports Node.js)
+- **AWS Lambda** (serverless)
+- **DigitalOcean App Platform** (easy, supports droplets)
+- **Render** (straightforward Node.js deployment)
+
+### Deployment Steps
+
+1. Push your code to GitHub
+2. Connect your repository to your chosen platform
+3. Set all required environment variables (see Environment Variables section above)
+4. Set `FRONTEND_URL` to your deployed frontend URL (e.g., `https://yoursite.netlify.app`)
+5. Set `BACKEND_URL` to your deployed backend URL (e.g., `https://yoursapi.railway.app`)
+6. Deploy!
+
+### Important for Frontend
+
+After deployment, your **frontend must know your backend URL**. In Netlify:
+
+1. Go to your site's deploy settings
+2. Set environment variable `VITE_API_BASE_URL = https://yoursapi.railway.app` (or your backend URL)
+3. Redeploy the frontend
+
+### OAuth Setup Checklist for Production
+
+1. Create OAuth apps on GitHub and Google (or just GitHub if using only GitHub login)
+2. Add your production callback URLs:
+   - GitHub: `https://yoursapi.railway.app/auth/github/callback`
+   - Google: `https://yoursapi.railway.app/auth/google/callback`
+3. Add the Client IDs and secrets to your backend environment variables
+4. Deploy both frontend and backend
+5. Test the login flow on the deployed site

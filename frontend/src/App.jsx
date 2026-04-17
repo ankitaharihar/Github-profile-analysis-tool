@@ -813,10 +813,27 @@ export default function App() {
   useEffect(() => {
     const loadOauthConfig = async () => {
       try {
-        const response = await axios.get(`${API_BASE_URL}/auth/config`);
+        const response = await axios.get(`${API_BASE_URL}/auth/config`, {
+          timeout: 5000
+        });
         setOauthConfig(response.data);
       } catch (error) {
-        console.log(error);
+        console.error("OAuth config load error:", error.message);
+        // Retry once after delay
+        const retryTimer = setTimeout(async () => {
+          try {
+            const response = await axios.get(`${API_BASE_URL}/auth/config`, {
+              timeout: 5000
+            });
+            setOauthConfig(response.data);
+          } catch (retryError) {
+            console.error("OAuth config retry failed:", retryError.message);
+            // Set both true to allow users to attempt login even if config fetch fails
+            // The actual OAuth flow will validate credentials
+            setOauthConfig({ github: true, google: true });
+          }
+        }, 1500);
+        return () => clearTimeout(retryTimer);
       }
     };
 
@@ -1628,16 +1645,14 @@ export default function App() {
                       }}
                       onFocus={() => setShowDropdown(true)}
                       onKeyDown={(event) => event.key === "Enter" && analyzeProfile()}
-                      disabled={!authUser}
                       placeholder="Enter GitHub username (e.g., torvalds)"
-                      className="hero-input h-14 w-full rounded-xl border border-white/5 bg-[#24314a] pl-13 pr-4 text-[0.96rem] text-slate-100 placeholder:text-slate-500 outline-none disabled:cursor-not-allowed disabled:opacity-60 md:h-14"
+                      className="hero-input h-14 w-full rounded-xl border border-white/5 bg-[#24314a] pl-13 pr-4 text-[0.96rem] text-slate-100 placeholder:text-slate-500 outline-none md:h-14"
                     />
                   </div>
 
                   <button
                     onClick={() => analyzeProfile()}
-                    disabled={!authUser}
-                    className="hero-analyze-btn h-14 rounded-xl px-6 text-[1rem] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60 md:h-14 md:w-40"
+                    className="hero-analyze-btn h-14 rounded-xl px-6 text-[1rem] font-semibold text-white md:h-14 md:w-40"
                   >
                     <span className="mr-2">⚡</span>
                     Analyze
@@ -1853,7 +1868,9 @@ export default function App() {
 
                 {!oauthConfig.github && !oauthConfig.google && (
                   <div className="mt-4 rounded-2xl border border-amber-400/20 bg-amber-500/10 p-4 text-sm text-amber-100">
-                    OAuth is not configured on the backend yet. Add your client IDs and secrets in <span className="font-semibold">backend/.env</span>, then restart the backend.
+                    <div className="font-semibold">OAuth not configured</div>
+                    <div className="mt-1">On deployed sites: Set <span className="font-mono bg-black/30 px-1">VITE_API_BASE_URL</span> in environment variables pointing to your backend.</div>
+                    <div className="mt-1">Locally: Add OAuth credentials in <span className="font-mono bg-black/30 px-1">backend/.env</span> and restart backend.</div>
                   </div>
                 )}
               </div>

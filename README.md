@@ -71,3 +71,41 @@ The frontend lives in [frontend/README.md](frontend/README.md) and contains the 
 ## Backend
 
 The backend API details are documented in [backend/README.md](backend/README.md).
+
+## Deployment
+
+### Frontend (Netlify)
+
+1. Push your code to GitHub
+2. Connect your repo to Netlify and configure:
+   - **Build command:** `npm run build --prefix frontend`
+   - **Publish directory:** `frontend/dist`
+3. Set environment variables in Netlify dashboard:
+   - `VITE_API_BASE_URL`: Your backend API URL (e.g., `https://your-backend.herokuapp.com`)
+
+### Backend
+
+Deploy to a hosting platform like:
+
+- [Heroku](https://heroku.com)
+- [Vercel](https://vercel.com)
+- [Railway](https://railway.app)
+- [AWS Lambda](https://aws.amazon.com/lambda)
+- Any VPS (DigitalOcean, Linode, etc.)
+
+**Required environment variables**:
+
+- `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET` (from GitHub OAuth App)
+- `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` (from Google OAuth App, if using)
+- `STRIPE_SECRET_KEY` and related Stripe vars (if using billing)
+- `FRONTEND_URL`: Your deployed frontend URL
+
+### Important: Connect Frontend to Backend
+
+On the deployed frontend (Netlify), set the `VITE_API_BASE_URL` environment variable to point to your deployed backend. This allows the frontend to:
+
+- Fetch OAuth configuration
+- Retrieve GitHub profile data
+- Handle authentication requests
+
+If `VITE_API_BASE_URL` is not set, the frontend defaults to `http://localhost:5000`, which won't work on a deployed site.
