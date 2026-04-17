@@ -9,13 +9,21 @@ import {
   ActivityChart
 } from "./components/Charts";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || (
+  typeof window !== "undefined" && window.location.hostname === "localhost"
+    ? "http://localhost:5000"
+    : ""
+);
 const TRENDING_USERS = ["torvalds", "gaearon", "sindresorhus", "yyx990803", "vercel"];
 
 const isLocalApiInProduction =
   typeof window !== "undefined" &&
   window.location.hostname !== "localhost" &&
   /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(String(API_BASE_URL || "").trim());
+
+const hasConfiguredApiBase =
+  Boolean(String(API_BASE_URL || "").trim()) &&
+  !isLocalApiInProduction;
 
 const buildLocalSuggestions = (query) => {
   const normalized = String(query || "").trim().toLowerCase();
@@ -856,6 +864,11 @@ export default function App() {
 
   useEffect(() => {
     const loadOauthConfig = async () => {
+      if (!hasConfiguredApiBase) {
+        setOauthConfig({ github: false, google: false });
+        return;
+      }
+
       try {
         const response = await axios.get(`${API_BASE_URL}/auth/config`, {
           timeout: 5000
@@ -872,9 +885,7 @@ export default function App() {
             setOauthConfig(response.data);
           } catch (retryError) {
             console.error("OAuth config retry failed:", retryError.message);
-            // Set both true to allow users to attempt login even if config fetch fails
-            // The actual OAuth flow will validate credentials
-            setOauthConfig({ github: true, google: true });
+            setOauthConfig({ github: false, google: false });
           }
         }, 1500);
         return () => clearTimeout(retryTimer);
@@ -945,7 +956,15 @@ export default function App() {
   }, [username, showDropdown]);
 
   const startOAuthLogin = (provider) => {
-    // Let backend decide whether provider is configured so users always get a real response.
+    if (!hasConfiguredApiBase) {
+      setLoginNotice({
+        type: "error",
+        text: "Login backend is not configured. Set VITE_API_BASE_URL to your deployed backend URL.",
+      });
+      setShowLoginPage(true);
+      return;
+    }
+
     window.location.href = `${API_BASE_URL}/auth/${provider}`;
   };
 
