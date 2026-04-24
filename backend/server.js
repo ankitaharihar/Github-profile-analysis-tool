@@ -439,6 +439,21 @@ app.get("/auth/config", (req, res) => {
   res.json(getOAuthConfigStatus());
 });
 
+app.get("/auth/me", (req, res) => {
+  const user = readAuthUserFromCookie(req);
+
+  if (!user?.id) {
+    return res.json({ user: null });
+  }
+
+  return res.json({ user });
+});
+
+app.post("/auth/logout", (req, res) => {
+  res.clearCookie("oauth_user", COOKIE_OPTIONS);
+  return res.json({ ok: true });
+});
+
 app.get("/api", (req, res) => {
   return res.json({ ok: true, message: "API running" });
 });

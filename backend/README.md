@@ -1,6 +1,6 @@
 # Backend
 
-This folder contains the Express API used by the frontend dashboard. It proxies a few public GitHub endpoints and returns a simplified JSON response for the UI.
+This folder contains the Express API used by the frontend dashboard. It handles GitHub data proxying, OAuth login flows, auth cookie state, and billing/subscription endpoints.
 
 ## Stack
 
@@ -161,6 +161,19 @@ Starts the GitHub OAuth flow.
 
 Starts the Google OAuth flow.
 
+### `GET /auth/me`
+
+Returns the currently logged-in user from the `oauth_user` cookie.
+
+Response shape:
+
+- `{ user: null }` when not signed in
+- `{ user: { ... } }` when signed in
+
+### `POST /auth/logout`
+
+Clears the `oauth_user` cookie and logs out the current user.
+
 All callbacks redirect back to the frontend and store the signed-in user in a browser cookie so the dashboard can show the logged-in state.
 
 ## Notes
@@ -168,6 +181,7 @@ All callbacks redirect back to the frontend and store the signed-in user in a br
 - Requests are made against the public GitHub REST API through the backend proxy.
 - CORS is enabled so the frontend can call the backend from `localhost` during development.
 - Login notifications are emailed after OAuth succeeds, if SMTP credentials are configured.
+- Subscription persistence avoids filesystem writes (important on serverless providers with read-only filesystems).
 
 ## Deployment
 
@@ -189,7 +203,8 @@ Popular options:
 3. Set all required environment variables (see Environment Variables section above)
 4. Set `FRONTEND_URL` to your deployed frontend URL (e.g., `https://yoursite.netlify.app`)
 5. Set `BACKEND_URL` to your deployed backend URL (e.g., `https://yoursapi.railway.app`)
-6. Deploy!
+6. Set `GITHUB_CALLBACK_URL` to the exact GitHub callback URL registered in GitHub OAuth app
+7. Deploy!
 
 ### Important for Frontend
 
@@ -209,3 +224,21 @@ After deployment, your **frontend must know your backend URL**. In Netlify:
 4. Set `GITHUB_CALLBACK_URL` to the exact callback URL registered in GitHub
 5. Deploy both frontend and backend
 6. Test the login flow on the deployed site
+
+## Troubleshooting
+
+### OAuth success but UI still shows signed out
+
+- Confirm frontend can call backend `GET /auth/me` endpoint.
+- Confirm `VITE_API_BASE_URL` points to the correct backend origin.
+- Confirm `FRONTEND_URL` on backend matches deployed frontend URL exactly.
+
+### `EROFS: read-only file system` on serverless
+
+- Do not use filesystem persistence in runtime paths.
+- Ensure `MONGO_URI` is set and reachable.
+
+### Mongo connection timeout
+
+- Validate Mongo credentials and URL encoding for special password characters.
+- Allow backend IP/network in Mongo provider firewall rules.

@@ -382,6 +382,15 @@ const readCookie = (name) => {
   return cookie ? cookie.slice(name.length + 1) : null;
 };
 
+const normalizeAuthUser = (parsed) => {
+  if (!parsed) return null;
+
+  return {
+    ...parsed,
+    avatarUrl: parsed?.avatarUrl || parsed?.avatar_url || parsed?.picture || "",
+  };
+};
+
 const getAuthUser = () => {
   const rawCookie = readCookie("oauth_user");
 
@@ -389,17 +398,11 @@ const getAuthUser = () => {
 
   try {
     const parsed = JSON.parse(decodeURIComponent(rawCookie));
-    return {
-      ...parsed,
-      avatarUrl: parsed?.avatarUrl || parsed?.avatar_url || parsed?.picture || "",
-    };
+    return normalizeAuthUser(parsed);
   } catch {
     try {
       const parsed = JSON.parse(rawCookie);
-      return {
-        ...parsed,
-        avatarUrl: parsed?.avatarUrl || parsed?.avatar_url || parsed?.picture || "",
-      };
+      return normalizeAuthUser(parsed);
     } catch {
       return null;
     }
@@ -909,6 +912,35 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    const syncAuthUser = async () => {
+      const params = new URLSearchParams(location.search);
+      const hasLoginResult = params.has("login_success") || params.has("login_error");
+
+      if (!hasConfiguredApiBase) {
+        if (hasLoginResult) {
+          setAuthUser(getAuthUser());
+        }
+        return;
+      }
+
+      try {
+        const response = await axios.get(apiUrl("/auth/me"), {
+          withCredentials: true,
+          timeout: 5000,
+        });
+
+        setAuthUser(normalizeAuthUser(response.data?.user));
+      } catch {
+        if (hasLoginResult) {
+          setAuthUser(getAuthUser());
+        }
+      }
+    };
+
+    syncAuthUser();
+  }, [location.search]);
+
+  useEffect(() => {
     if (!loginNotice) return undefined;
 
     const timer = window.setTimeout(() => {
@@ -1021,7 +1053,15 @@ export default function App() {
     }
   };
 
-  const handleSignOut = () => {
+  const handleSignOut = async () => {
+    if (hasConfiguredApiBase) {
+      try {
+        await axios.post(apiUrl("/auth/logout"), {}, { withCredentials: true, timeout: 5000 });
+      } catch {
+        // Ignore logout API failures and continue local cleanup.
+      }
+    }
+
     clearCookie("oauth_user");
     setAuthUser(null);
     setShowHistory(false);

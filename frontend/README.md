@@ -24,6 +24,7 @@ This is the React + Vite frontend for RepoInsight. It renders the dashboard UI, 
 - Search suggestions from GitHub user search.
 - Real login via GitHub and Google OAuth from the backend.
 - Recent search history protected behind the login state.
+- Auth profile sync after OAuth redirect using backend `GET /auth/me`.
 
 ## Setup
 
@@ -58,6 +59,7 @@ npm run lint
 - Set `VITE_API_BASE_URL` if your backend runs somewhere else.
 - Repository data is fetched from GitHub API endpoints, so public GitHub rate limits still apply.
 - The login landing section shows provider buttons when you are signed out.
+- Logout calls backend `POST /auth/logout` and also clears local auth state.
 - Main UI code lives in [src/App.jsx](src/App.jsx).
 - Shared chart components live in [src/components/Charts.jsx](src/components/Charts.jsx).
 - The repository file browser lives in [src/components/FileExplorer.jsx](src/components/FileExplorer.jsx) and [src/components/RepoModal.jsx](src/components/RepoModal.jsx).
@@ -97,11 +99,12 @@ If the login buttons are disabled, the backend OAuth values are missing.
 ### Just GitHub Login
 
 1. Copy [backend/.env.example](../backend/.env.example) to `backend/.env`.
-2. Fill only these 4 values first:
+2. Fill these 5 values first:
    - `FRONTEND_URL=http://localhost:5173`
    - `BACKEND_URL=http://localhost:5000`
    - `GITHUB_CLIENT_ID=...`
    - `GITHUB_CLIENT_SECRET=...`
+   - `GITHUB_CALLBACK_URL=http://localhost:5000/auth/github/callback`
 3. In your GitHub OAuth app, add this callback URL:
    - `http://localhost:5000/auth/github/callback`
 4. Restart the backend.
@@ -113,3 +116,23 @@ If you also want Google login, fill these too:
 
 - `GOOGLE_CLIENT_ID`
 - `GOOGLE_CLIENT_SECRET`
+
+## Deployment Checklist
+
+1. Set frontend env `VITE_API_BASE_URL` to deployed backend URL.
+2. Set backend `FRONTEND_URL` to deployed frontend URL.
+3. Set backend `GITHUB_CALLBACK_URL` to exact GitHub callback URL.
+4. Redeploy backend first, then frontend.
+
+## Quick Troubleshooting
+
+### Login success message appears, but profile/menu still shows Login
+
+- Check backend endpoint `GET /auth/me` responds correctly.
+- Check `VITE_API_BASE_URL` points to correct backend.
+- Check browser network for blocked cookie/cors requests.
+
+### OAuth provider buttons disabled
+
+- Backend `GET /auth/config` likely returning missing provider config.
+- Verify backend OAuth env vars and redeploy backend.

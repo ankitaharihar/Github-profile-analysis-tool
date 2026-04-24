@@ -1,33 +1,33 @@
 # RepoInsight
 
-RepoInsight is a split frontend/backend app for exploring a GitHub user's public profile, repositories, and language breakdown. The frontend is a React + Vite dashboard, and the backend is a small Express API that proxies a few GitHub endpoints.
+RepoInsight is a full-stack GitHub analysis app with a React + Vite frontend and an Express backend. It supports profile analysis, repository insights, OAuth login (GitHub/Google), and subscription/billing workflows.
 
-## Project Layout
+## Monorepo Structure
 
 ```text
 RepoInsight/
-├─ backend/
-├─ frontend/
-├─ package.json
-└─ README.md
+├─ api/                  # Vercel serverless entrypoints
+├─ backend/              # Express API and OAuth logic
+├─ frontend/             # React + Vite dashboard
+├─ netlify.toml          # Netlify frontend build config
+├─ vercel.json           # Vercel route config
+└─ package.json          # root scripts (runs both apps in dev)
 ```
 
-## What It Does
+## Features
 
-- Searches and analyzes a GitHub username from the dashboard.
-- Shows profile details, repository counts, stars, and follower stats.
-- Renders language, skills, and activity charts.
-- Browses repository files and README content in a modal-style explorer.
-- Uses the backend for profile data and GitHub directly for some repository lookups.
+- GitHub user search and profile analysis.
+- Repository insights: stars, forks, languages, activity trends.
+- OAuth login via GitHub and Google.
+- Auth-aware UI with profile menu and history.
+- Billing plan endpoints and Stripe checkout/webhook integration.
 
 ## Prerequisites
 
-- Node.js 18 or newer
+- Node.js 18+
 - npm
 
 ## Install
-
-Install dependencies for the root helper package and both apps:
 
 ```bash
 npm install
@@ -35,77 +35,70 @@ npm install --prefix backend
 npm install --prefix frontend
 ```
 
-## Run
+## Run Locally
 
-Start both apps together from the repository root:
+Run both apps from root:
 
 ```bash
 npm run dev
 ```
 
-Or run them separately:
+Or run separately:
 
 ```bash
 npm run dev:backend
 npm run dev:frontend
 ```
 
+Default local URLs:
+
+- Frontend: `http://localhost:5173`
+- Backend: `http://localhost:5000`
+
 ## Scripts
 
-- Root: `npm run dev` starts backend and frontend together.
-- Backend: `npm run dev` runs `nodemon server.js`, `npm start` runs `node server.js`.
-- Frontend: `npm run dev`, `npm run build`, `npm run lint`, `npm run preview`.
+- Root: `npm run dev`, `npm run dev:backend`, `npm run dev:frontend`
+- Backend: `npm run dev`, `npm start`
+- Frontend: `npm run dev`, `npm run build`, `npm run preview`, `npm run lint`
 
-## Backend API
+## Environment Setup
 
-The backend listens on `http://localhost:5000` and exposes:
+Backend `.env` should include at minimum:
 
-- `GET /api/github/:username` for public profile data.
-- `GET /api/github/:username/repos` for repositories with simple pagination fields.
-- `GET /api/github/:username/languages` for a language frequency summary.
+- `FRONTEND_URL=http://localhost:5173`
+- `BACKEND_URL=http://localhost:5000`
+- `MONGO_URI=...` (recommended for persistent subscription data)
+- `GITHUB_CLIENT_ID=...`
+- `GITHUB_CLIENT_SECRET=...`
+- `GITHUB_CALLBACK_URL=http://localhost:5000/auth/github/callback`
 
-## Frontend
+Frontend env:
 
-The frontend lives in [frontend/README.md](frontend/README.md) and contains the UI-specific setup and usage notes.
+- `VITE_API_BASE_URL=http://localhost:5000`
 
-## Backend
+## Docs
 
-The backend API details are documented in [backend/README.md](backend/README.md).
+- Backend API and deployment details: [backend/README.md](backend/README.md)
+- Frontend UI and OAuth behavior: [frontend/README.md](frontend/README.md)
 
-## Deployment
+## Deployment Notes
 
 ### Frontend (Netlify)
 
-1. Push your code to GitHub
-2. Connect your repo to Netlify and configure:
-   - **Build command:** `npm run build --prefix frontend`
-   - **Publish directory:** `frontend/dist`
-3. Set environment variables in Netlify dashboard:
-   - `VITE_API_BASE_URL`: Your backend API URL (e.g., `https://your-backend.herokuapp.com`)
+- Base directory: `frontend`
+- Build command: `npm run build`
+- Publish directory: `dist`
+- Required env: `VITE_API_BASE_URL=<your-backend-url>`
 
-### Backend
+### Backend (Vercel/Railway/Render/etc.)
 
-Deploy to a hosting platform like:
+- Set required OAuth and Stripe env vars.
+- Set `FRONTEND_URL` to deployed frontend URL.
+- Set `BACKEND_URL` to deployed backend URL.
+- Set `GITHUB_CALLBACK_URL` to exact callback registered in GitHub OAuth app.
+- Use MongoDB (`MONGO_URI`) for durable subscription storage.
 
-- [Heroku](https://heroku.com)
-- [Vercel](https://vercel.com)
-- [Railway](https://railway.app)
-- [AWS Lambda](https://aws.amazon.com/lambda)
-- Any VPS (DigitalOcean, Linode, etc.)
+### OAuth Reliability
 
-**Required environment variables**:
-
-- `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET` (from GitHub OAuth App)
-- `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` (from Google OAuth App, if using)
-- `STRIPE_SECRET_KEY` and related Stripe vars (if using billing)
-- `FRONTEND_URL`: Your deployed frontend URL
-
-### Important: Connect Frontend to Backend
-
-On the deployed frontend (Netlify), set the `VITE_API_BASE_URL` environment variable to point to your deployed backend. This allows the frontend to:
-
-- Fetch OAuth configuration
-- Retrieve GitHub profile data
-- Handle authentication requests
-
-If `VITE_API_BASE_URL` is not set, the frontend defaults to `http://localhost:5000`, which won't work on a deployed site.
+- Backend now exposes `GET /auth/me` so frontend can re-sync logged-in user state after OAuth redirect.
+- Backend exposes `POST /auth/logout` to clear server cookie explicitly.
