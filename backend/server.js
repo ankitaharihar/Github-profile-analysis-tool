@@ -239,7 +239,7 @@ const parseBoundedNumber = (value, fallback, min, max) => {
 
 const COOKIE_OPTIONS = {
   path: "/",
-  sameSite: "lax",
+  sameSite: "none",
   secure: process.env.NODE_ENV === "production",
 };
 
