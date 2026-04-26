@@ -30,6 +30,10 @@ export default function App() {
   const [repos, setRepos] = useState([])
   const [userData, setUserData] = useState(null)
   const [error, setError] = useState('')
+  const [suggestions, setSuggestions] = useState([])
+  const [showSuggestions, setShowSuggestions] = useState(false)
+  const [activeIndex, setActiveIndex] = useState(-1)
+  const [debounceTimer, setDebounceTimer] = useState(null)
   const [languageFilter, setLanguageFilter] = useState('all')
   const [sortBy, setSortBy] = useState('stars')
   const [includeForks, setIncludeForks] = useState(true)
@@ -86,6 +90,41 @@ export default function App() {
     }
   }, [])
 
+  useEffect(() => {
+    return () => {
+      if (debounceTimer) {
+        clearTimeout(debounceTimer)
+      }
+    }
+  }, [debounceTimer])
+
+  const handleSuggestionSearch = (query) => {
+    if (debounceTimer) {
+      clearTimeout(debounceTimer)
+    }
+
+    const timer = setTimeout(async () => {
+      if (!query.trim()) {
+        setSuggestions([])
+        setActiveIndex(-1)
+        return
+      }
+
+      try {
+        const res = await axios.get(
+          `https://api.github.com/search/users?q=${encodeURIComponent(query)}&per_page=5`
+        )
+        setSuggestions(res.data.items || [])
+        setActiveIndex(-1)
+      } catch {
+        setSuggestions([])
+        setActiveIndex(-1)
+      }
+    }, 400)
+
+    setDebounceTimer(timer)
+  }
+
   const handleLogout = async () => {
     try {
       await axios.post(`${API_BASE_URL}/auth/logout`, {})
@@ -98,6 +137,9 @@ export default function App() {
       setRepos([])
       setUserData(null)
       setError('')
+      setSuggestions([])
+      setShowSuggestions(false)
+      setActiveIndex(-1)
     }
   }
 
@@ -118,6 +160,9 @@ export default function App() {
       setLoading(true)
       setError('')
       setUsername(trimmed)
+      setShowSuggestions(false)
+      setSuggestions([])
+      setActiveIndex(-1)
 
       const [profileRes, repoRes] = await Promise.all([
         axios.get(`${API_BASE_URL}/api/github/${trimmed}`),
@@ -202,17 +247,53 @@ export default function App() {
             </div>
 
             <div className="search-box-landing">
-              <input
-                type="text"
-                placeholder="Enter GitHub username (e.g., torvalds)"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    setError('Please login first')
-                  }
-                }}
-              />
+              <div className="search-input-wrap">
+                <input
+                  type="text"
+                  placeholder="Enter GitHub username (e.g., torvalds)"
+                  value={username}
+                  onChange={(e) => {
+                    const nextValue = e.target.value
+                    setUsername(nextValue)
+                    handleSuggestionSearch(nextValue)
+                    setShowSuggestions(true)
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'ArrowDown') {
+                      setActiveIndex((prev) => (prev < suggestions.length - 1 ? prev + 1 : prev))
+                    } else if (e.key === 'ArrowUp') {
+                      setActiveIndex((prev) => (prev > 0 ? prev - 1 : 0))
+                    } else if (e.key === 'Enter') {
+                      if (activeIndex >= 0) {
+                        handleSearch(suggestions[activeIndex].login)
+                        setShowSuggestions(false)
+                      } else {
+                        setError('Please login first')
+                      }
+                    }
+                  }}
+                  onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+                />
+                {showSuggestions && suggestions.length > 0 && (
+                  <div className="suggestions-list">
+                    {suggestions.map((user, index) => (
+                      <div
+                        key={user.id}
+                        className={`suggestion-item ${index === activeIndex ? 'active' : ''}`}
+                        onMouseEnter={() => setActiveIndex(index)}
+                        onClick={() => {
+                          setUsername(user.login)
+                          setShowSuggestions(false)
+                          handleSearch(user.login)
+                        }}
+                      >
+                        <img src={user.avatar_url} alt="" className="avatar" />
+                        <span>{user.login}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
               <button onClick={() => setError('Please login first')} className="btn-primary">Analyze</button>
             </div>
             <p className="landing-hint">Get profile score, AI insights, and repo-level analytics in one clean workflow.</p>
@@ -223,17 +304,53 @@ export default function App() {
         <div className="dashboard">
           <div className="search-section">
             <div className="search-box">
-              <input
-                type="text"
-                placeholder="Enter GitHub username"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    handleSearch()
-                  }
-                }}
-              />
+              <div className="search-input-wrap">
+                <input
+                  type="text"
+                  placeholder="Enter GitHub username"
+                  value={username}
+                  onChange={(e) => {
+                    const nextValue = e.target.value
+                    setUsername(nextValue)
+                    handleSuggestionSearch(nextValue)
+                    setShowSuggestions(true)
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'ArrowDown') {
+                      setActiveIndex((prev) => (prev < suggestions.length - 1 ? prev + 1 : prev))
+                    } else if (e.key === 'ArrowUp') {
+                      setActiveIndex((prev) => (prev > 0 ? prev - 1 : 0))
+                    } else if (e.key === 'Enter') {
+                      if (activeIndex >= 0) {
+                        handleSearch(suggestions[activeIndex].login)
+                        setShowSuggestions(false)
+                      } else {
+                        handleSearch()
+                      }
+                    }
+                  }}
+                  onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+                />
+                {showSuggestions && suggestions.length > 0 && (
+                  <div className="suggestions-list">
+                    {suggestions.map((user, index) => (
+                      <div
+                        key={user.id}
+                        className={`suggestion-item ${index === activeIndex ? 'active' : ''}`}
+                        onMouseEnter={() => setActiveIndex(index)}
+                        onClick={() => {
+                          setUsername(user.login)
+                          setShowSuggestions(false)
+                          handleSearch(user.login)
+                        }}
+                      >
+                        <img src={user.avatar_url} alt="" className="avatar" />
+                        <span>{user.login}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
               <button onClick={() => handleSearch()} className="btn-primary">Analyze</button>
             </div>
             {error && <p className="error-message">{error}</p>}

@@ -133,6 +133,11 @@
   border: 1px solid rgba(148, 163, 184, 0.1);
 }
 
+.search-input-wrap {
+  position: relative;
+  flex: 1;
+}
+
 .search-box-landing input {
   flex: 1;
   background: transparent;
@@ -210,26 +215,39 @@
 
 .suggestions-list {
   position: absolute;
-  top: 100%;
-  left: 1.5rem;
-  right: 6rem;
-  background: rgba(15, 23, 42, 0.95);
-  border: 1px solid rgba(148, 163, 184, 0.1);
-  border-radius: 0.5rem;
-  max-height: 300px;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  background: #1e293b;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 12px;
+  max-height: 280px;
   overflow-y: auto;
-  z-index: 50;
+  z-index: 100;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
 }
 
 .suggestion-item {
-  padding: 0.75rem 1rem;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
   cursor: pointer;
   color: #cbd5e1;
   transition: background 0.2s;
 }
 
-.suggestion-item:hover {
-  background: rgba(148, 163, 184, 0.1);
+.suggestion-item:hover,
+.suggestion-item.active {
+  background: #334155;
+}
+
+.avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
 }
 
 .btn-primary {
