@@ -150,3 +150,33 @@ export function ActivityChart({ theme = "dark", data = [] }) {
     </ResponsiveContainer>
   );
 }
+
+export default function Charts({ userData, repos = [], theme = "dark" }) {
+  const languageData = Array.isArray(userData?.languageBreakdown)
+    ? userData.languageBreakdown.map((entry) => ({
+        name: entry.language || entry.name,
+        value: entry.repoCount || entry.value || 0,
+      }))
+    : [];
+
+  return (
+    <section className="charts-section">
+      <div className="charts-grid">
+        <div className="chart-card">
+          <h3>Language Breakdown</h3>
+          <LanguageChart languageData={languageData} repos={repos} theme={theme} />
+        </div>
+
+        <div className="chart-card">
+          <h3>Skill Radar</h3>
+          <RadarChartBox repos={repos} theme={theme} />
+        </div>
+
+        <div className="chart-card">
+          <h3>Activity Trend</h3>
+          <ActivityChart theme={theme} data={userData?.activityData || []} />
+        </div>
+      </div>
+    </section>
+  );
+}
