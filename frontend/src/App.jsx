@@ -120,8 +120,16 @@ export default function App() {
         setSuggestions(res.data.items || [])
         setActiveIndex(-1)
       } catch {
-        setSuggestions([])
-        setActiveIndex(-1)
+        try {
+          const fallbackRes = await axios.get(
+            `https://api.github.com/search/users?q=${encodeURIComponent(query)}&per_page=5`
+          )
+          setSuggestions(fallbackRes.data.items || [])
+          setActiveIndex(-1)
+        } catch {
+          setSuggestions([])
+          setActiveIndex(-1)
+        }
       } finally {
         setSuggestionsLoading(false)
       }
