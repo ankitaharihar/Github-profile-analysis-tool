@@ -237,10 +237,12 @@ const parseBoundedNumber = (value, fallback, min, max) => {
   return Math.min(Math.max(Math.floor(parsed), min), max);
 };
 
+const IS_PRODUCTION = process.env.NODE_ENV === "production";
+
 const COOKIE_OPTIONS = {
   path: "/",
-  sameSite: "none",
-  secure: process.env.NODE_ENV === "production",
+  sameSite: IS_PRODUCTION ? "none" : "lax",
+  secure: IS_PRODUCTION,
 };
 
 const getGitHubCallbackUrl = (req) => {

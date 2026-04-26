@@ -12,19 +12,25 @@ export async function handler(event) {
       };
     }
 
-    const token = process.env.GITHUB_TOKEN || process.env.VITE_GITHUB_TOKEN;
-    const headers = {
+    const searchUrl = `https://api.github.com/search/users?q=${encodeURIComponent(query)}&per_page=${perPage}`;
+    const baseHeaders = {
       Accept: "application/vnd.github+json",
       "X-GitHub-Api-Version": "2022-11-28",
       "User-Agent": "RepoInsight-Netlify-Function",
     };
 
-    if (token) {
-      headers.Authorization = `Bearer ${token}`;
+    const token = process.env.GITHUB_TOKEN || process.env.VITE_GITHUB_TOKEN;
+    const tokenHeaders = token
+      ? { ...baseHeaders, Authorization: `Bearer ${token}` }
+      : baseHeaders;
+
+    let response = await fetch(searchUrl, { headers: tokenHeaders });
+
+    if (response.status === 401 && token) {
+      console.warn("GitHub token returned 401 for search-users; retrying without Authorization header.");
+      response = await fetch(searchUrl, { headers: baseHeaders });
     }
 
-    const searchUrl = `https://api.github.com/search/users?q=${encodeURIComponent(query)}&per_page=${perPage}`;
-    const response = await fetch(searchUrl, { headers });
     const data = await response.json();
 
     if (!response.ok) {
