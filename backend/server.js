@@ -322,26 +322,35 @@ const getPrimaryEmail = (emails = []) => {
   return primary?.email || emails.find((entry) => entry.verified)?.email || "";
 };
 
-const sendLoginEmail = async (user) => {
+const sendNewUserWelcomeEmail = async (user) => {
   if (!user.email) return false;
 
   const mailer = getMailer();
   if (!mailer) {
-    console.warn("Email credentials are not configured. Skipping login email.");
+    console.warn("Email credentials are not configured. Skipping welcome email.");
     return false;
   }
+
+  const displayName = user.name || user.login || "there";
 
   await mailer.sendMail({
     from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
     to: user.email,
-    subject: "You signed in to GitHub Intelligence Pro",
-    text: `Hi ${user.name || user.login || "there"},\n\nA successful ${user.provider} login was detected for your GitHub Intelligence Pro session.\n\nIf this was not you, please review your account activity.`,
+    subject: "Welcome to RepoInsight",
+    text: `Hi ${displayName},\n\nWelcome to RepoInsight. Your ${user.provider} account was successfully connected and your workspace is now ready.\n\nYou can now analyze GitHub profiles, get AI insights, and explore repository analytics.\n\nIf this was not you, please secure your account immediately.\n\n- RepoInsight Team`,
     html: `
-      <div style="font-family:Arial,sans-serif;line-height:1.6;color:#0f172a">
-        <h2 style="margin:0 0 12px">Login successful</h2>
-        <p>Hi ${user.name || user.login || "there"},</p>
-        <p>A successful <strong>${user.provider}</strong> login was detected for your GitHub Intelligence Pro session.</p>
-        <p>If this was not you, please review your account activity.</p>
+      <div style="font-family:Inter,Arial,sans-serif;line-height:1.6;color:#0f172a;max-width:560px;margin:0 auto">
+        <h2 style="margin:0 0 12px;color:#111827">Welcome to RepoInsight</h2>
+        <p>Hi ${displayName},</p>
+        <p>Your <strong>${user.provider}</strong> account was connected successfully.</p>
+        <p style="margin:16px 0">You can now:</p>
+        <ul style="padding-left:20px;margin:0 0 16px">
+          <li>Analyze GitHub profiles</li>
+          <li>Get AI-powered insights</li>
+          <li>Explore repository-level analytics</li>
+        </ul>
+        <p>If this was not you, please secure your account immediately.</p>
+        <p style="margin-top:18px;color:#6b7280">- RepoInsight Team</p>
       </div>
     `,
   });
@@ -550,11 +559,18 @@ app.get("/auth/github/callback", async (req, res) => {
       avatarUrl: profile.avatar_url,
     };
 
+    const existingSubscription = await getSubscriptionByUserId(user.id);
+    const isNewUser = !existingSubscription;
+
     await upsertSubscription(user.id, {
-      plan: (await getSubscriptionByUserId(user.id))?.plan || "free",
+      plan: existingSubscription?.plan || "free",
       status: "active",
     });
-    await sendLoginEmail(user);
+
+    if (isNewUser) {
+      await sendNewUserWelcomeEmail(user);
+    }
+
     storeAuthUser(res, user);
     const authToken = signAuthToken(user);
 
@@ -622,11 +638,18 @@ app.get("/auth/google/callback", async (req, res) => {
       avatarUrl: profile.picture,
     };
 
+    const existingSubscription = await getSubscriptionByUserId(user.id);
+    const isNewUser = !existingSubscription;
+
     await upsertSubscription(user.id, {
-      plan: (await getSubscriptionByUserId(user.id))?.plan || "free",
+      plan: existingSubscription?.plan || "free",
       status: "active",
     });
-    await sendLoginEmail(user);
+
+    if (isNewUser) {
+      await sendNewUserWelcomeEmail(user);
+    }
+
     storeAuthUser(res, user);
     const authToken = signAuthToken(user);
 

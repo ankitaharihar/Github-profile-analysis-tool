@@ -25,6 +25,7 @@ if (!globalThis[AXIOS_INTERCEPTOR_FLAG]) {
 
 export default function App() {
   const [authUser, setAuthUser] = useState(null)
+  const [oauthConfig, setOauthConfig] = useState({ github: true, google: true })
   const [loading, setLoading] = useState(true)
   const [username, setUsername] = useState('')
   const [repos, setRepos] = useState([])
@@ -86,6 +87,33 @@ export default function App() {
     }
 
     syncAuth()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+
+    const fetchAuthConfig = async () => {
+      try {
+        const res = await axios.get(`${API_BASE_URL}/auth/config`)
+
+        if (!cancelled && res.data) {
+          setOauthConfig({
+            github: Boolean(res.data.github),
+            google: Boolean(res.data.google),
+          })
+        }
+      } catch {
+        if (!cancelled) {
+          setOauthConfig({ github: true, google: true })
+        }
+      }
+    }
+
+    fetchAuthConfig()
+
     return () => {
       cancelled = true
     }
@@ -232,6 +260,8 @@ export default function App() {
     handleSearch(login)
   }
 
+  const getAuthUrl = (provider) => `${API_BASE_URL}/auth/${provider}`
+
   const filteredRepos = useMemo(() => {
     let next = [...repos]
 
@@ -305,7 +335,18 @@ export default function App() {
               <button onClick={handleLogout} className="logout-btn">Logout</button>
             </>
           ) : (
-            <a href={`${API_BASE_URL}/auth/github`} className="login-btn">Login</a>
+            <div className="auth-options-nav">
+              {oauthConfig.github ? (
+                <a href={getAuthUrl('github')} className="login-btn">GitHub</a>
+              ) : (
+                <button className="login-btn disabled" disabled>GitHub</button>
+              )}
+              {oauthConfig.google ? (
+                <a href={getAuthUrl('google')} className="login-btn google-login-btn">Google</a>
+              ) : (
+                <button className="login-btn google-login-btn disabled" disabled>Google</button>
+              )}
+            </div>
           )}
         </div>
       </nav>
@@ -392,6 +433,18 @@ export default function App() {
             </div>
             <p className="landing-hint">Get profile score, AI insights, and repo-level analytics in one clean workflow.</p>
             <p className="landing-login-hint">Sign in to unlock search history and full analytics.</p>
+            <div className="auth-options-hero">
+              {oauthConfig.github ? (
+                <a href={getAuthUrl('github')} className="login-btn">Continue with GitHub</a>
+              ) : (
+                <button className="login-btn disabled" disabled>GitHub not configured</button>
+              )}
+              {oauthConfig.google ? (
+                <a href={getAuthUrl('google')} className="login-btn google-login-btn">Continue with Google</a>
+              ) : (
+                <button className="login-btn google-login-btn disabled" disabled>Google not configured</button>
+              )}
+            </div>
           </div>
         </div>
       ) : (
