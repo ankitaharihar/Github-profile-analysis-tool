@@ -86,10 +86,10 @@ export function RadarChartBox({ repos, theme = "dark" }) {
         <PolarAngleAxis dataKey="subject" stroke={isLight ? "#64748b" : "#94a3b8"} />
         <Radar
           dataKey="A"
-          stroke="#6366f1"
-          fill="#6366f1"
+          stroke="#a855f7"
+          fill="#a855f7"
           fillOpacity={isLight ? 0.42 : 0.5}
-           style={{ filter: "drop-shadow(0 0 15px #6366f1)" }}
+           style={{ filter: "drop-shadow(0 0 15px rgba(168, 85, 247, 0.6))" }}
         />
       </RadarChart>
     </ResponsiveContainer>
@@ -121,8 +121,8 @@ export function ActivityChart({ theme = "dark", data = [] }) {
       <AreaChart data={chartData}>
         <defs>
           <linearGradient id="colorGradient" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#6366f1" stopOpacity={0.8} />
-            <stop offset="100%" stopColor="#6366f1" stopOpacity={0} />
+            <stop offset="0%" stopColor="#a855f7" stopOpacity={0.8} />
+            <stop offset="100%" stopColor="#a855f7" stopOpacity={0} />
           </linearGradient>
         </defs>
 
@@ -141,10 +141,10 @@ export function ActivityChart({ theme = "dark", data = [] }) {
         <Area
           type="monotone"
           dataKey="value"
-          stroke="#6366f1"
+          stroke="#a855f7"
           strokeWidth={4}
           fill="url(#colorGradient)"
-          style={{ filter: "drop-shadow(0 0 4px #6366f1)" }}
+          style={{ filter: "drop-shadow(0 0 4px rgba(168, 85, 247, 0.6))" }}
         />
       </AreaChart>
     </ResponsiveContainer>
@@ -195,125 +195,81 @@ function calculateDeveloperScore(userData, repos = []) {
   return { score: Math.round(score), breakdown, maxScore: 100 };
 }
 
-// 🎯 DEVELOPER SCORE CARD COMPONENT
+// 🎯 DEVELOPER SCORE CARD COMPONENT (COMPACT)
 export function DeveloperScoreCard({ userData, repos = [], theme = "dark" }) {
   const isLight = theme === "light";
   const { score, breakdown, maxScore } = calculateDeveloperScore(userData, repos);
   const percentage = (score / maxScore) * 100;
 
+  const getScoreLabel = (pct) => {
+    if (pct >= 80) return "Excellent Developer";
+    if (pct >= 60) return "Strong Developer";
+    if (pct >= 40) return "Growing Developer";
+    return "Emerging Developer";
+  };
+
   const getScoreColor = (pct) => {
-    if (pct >= 80) return "#22c55e"; // green
-    if (pct >= 60) return "#3b82f6"; // blue
-    if (pct >= 40) return "#f59e0b"; // amber
+    if (pct >= 80) return "#a855f7"; // purple
+    if (pct >= 60) return "#a855f7"; // purple
+    if (pct >= 40) return "#ec4899"; // pink
     return "#ec4899"; // pink
   };
 
   const scoreColor = getScoreColor(percentage);
-
-  const categories = Object.entries(breakdown).map(([key, data]) => ({
-    key,
-    ...data,
-    percentage: (data.score / data.max) * 100,
-  }));
+  const scoreLabel = getScoreLabel(percentage);
 
   return (
-    <div className={`developer-score-card ${isLight ? 'light' : 'dark'}`}>
-      <div className="score-header">
-        <h2>Developer Score</h2>
-      </div>
-
-      <div className="score-display">
-        <div className="score-circle">
-          <svg viewBox="0 0 200 200" style={{ width: "100%", height: "100%" }}>
+    <div className={`developer-score-card-compact ${isLight ? 'light' : 'dark'}`}>
+      <div className="score-compact-content">
+        <div className="score-circle-compact">
+          <svg viewBox="0 0 140 140" style={{ width: "100%", height: "100%" }}>
             <defs>
-              <linearGradient id="scoreGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor={scoreColor} stopOpacity="1" />
-                <stop offset="100%" stopColor="#6366f1" stopOpacity="0.8" />
+              <linearGradient id="scoreGradientCompact" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#a855f7" stopOpacity="1" />
+                <stop offset="100%" stopColor="#ec4899" stopOpacity="0.8" />
               </linearGradient>
             </defs>
             <circle
-              cx="100"
-              cy="100"
-              r="90"
+              cx="70"
+              cy="70"
+              r="60"
               fill="none"
               stroke={isLight ? "#e2e8f0" : "#1e293b"}
-              strokeWidth="8"
+              strokeWidth="6"
             />
             <circle
-              cx="100"
-              cy="100"
-              r="90"
+              cx="70"
+              cy="70"
+              r="60"
               fill="none"
-              stroke="url(#scoreGradient)"
-              strokeWidth="8"
-              strokeDasharray={`${(percentage / 100) * 565.48} 565.48`}
+              stroke="url(#scoreGradientCompact)"
+              strokeWidth="6"
+              strokeDasharray={`${(percentage / 100) * 376.99} 376.99`}
               strokeLinecap="round"
               style={{
-                filter: `drop-shadow(0 0 12px ${scoreColor})`,
+                filter: `drop-shadow(0 0 10px rgba(168, 85, 247, 0.5))`,
                 transform: "rotate(-90deg)",
-                transformOrigin: "100px 100px",
+                transformOrigin: "70px 70px",
               }}
             />
             <text
-              x="100"
-              y="100"
+              x="70"
+              y="70"
               textAnchor="middle"
               dy="0.3em"
-              fontSize="48"
+              fontSize="32"
               fontWeight="bold"
-              fill={scoreColor}
+              fill="#a855f7"
               style={{ pointerEvents: "none" }}
             >
               {score}
             </text>
-            <text
-              x="100"
-              y="140"
-              textAnchor="middle"
-              fontSize="16"
-              fill={isLight ? "#64748b" : "#94a3b8"}
-              style={{ pointerEvents: "none" }}
-            >
-              / {maxScore}
-            </text>
           </svg>
         </div>
 
-        <div className="score-breakdown">
-          {categories.map((cat) => (
-            <div key={cat.key} className="breakdown-item">
-              <div className="breakdown-label">
-                <span className="label-text">{cat.label}</span>
-                <span className="label-value">{cat.score}/{cat.max}</span>
-              </div>
-              <div className="breakdown-bar">
-                <div
-                  className="breakdown-fill"
-                  style={{
-                    width: `${cat.percentage}%`,
-                    backgroundColor: scoreColor,
-                    boxShadow: `0 0 8px ${scoreColor}`,
-                  }}
-                />
-              </div>
-              <div className="breakdown-detail">{cat.value} {cat.label.toLowerCase()}</div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="score-interpretation">
-        <div className="interpretation-item excellent">
-          <span>80-100:</span> Excellent Developer
-        </div>
-        <div className="interpretation-item good">
-          <span>60-79:</span> Strong Developer
-        </div>
-        <div className="interpretation-item fair">
-          <span>40-59:</span> Growing Developer
-        </div>
-        <div className="interpretation-item developing">
-          <span>0-39:</span> Emerging Developer
+        <div className="score-info-compact">
+          <p className="score-label-compact">{scoreLabel}</p>
+          <p className="score-subtitle-compact">Out of 100</p>
         </div>
       </div>
     </div>

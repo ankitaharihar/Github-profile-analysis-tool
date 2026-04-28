@@ -343,7 +343,15 @@
 
 /* Repo Section */
 .repo-section {
-  margin-top: 2rem;
+  margin-top: 60px;
+  margin-bottom: 2rem;
+}
+
+.repo-section h2 {
+  color: #e2e8f0;
+  font-size: 1.5rem;
+  margin-bottom: 1.5rem;
+  font-weight: 600;
 }
 
 .repo-controls {
@@ -595,6 +603,23 @@
 
 .insight-item p {
   color: #cbd5e1;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.no-insights {
+  color: #94a3b8;
+  font-size: 0.9rem;
+}
+
+.insight-icon {
+  font-size: 1.2rem;
+  flex-shrink: 0;
+}
+
+.insight-item p {
+  color: #cbd5e1;
   margin: 0;
   font-size: 0.95rem;
   line-height: 1.5;
@@ -749,6 +774,91 @@
   border: 1px solid rgba(236, 72, 153, 0.3);
 }
 
+/* Developer Score Card (Compact) */
+.developer-score-card-compact {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(30, 41, 59, 0.7);
+  border: 1px solid rgba(148, 163, 184, 0.15);
+  border-radius: 16px;
+  padding: 2rem;
+  margin-top: 2rem;
+  margin-bottom: 2rem;
+  backdrop-filter: blur(8px);
+  text-align: center;
+}
+
+.developer-score-card-compact.light {
+  background: rgba(248, 250, 252, 0.7);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.score-circle-compact {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 1.5rem;
+}
+
+.score-circle-compact svg {
+  width: 140px;
+  height: 140px;
+  filter: drop-shadow(0 0 20px rgba(168, 85, 247, 0.3));
+}
+
+.score-info-compact {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.score-value-compact {
+  font-size: 1.2rem;
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+.score-label-compact {
+  font-size: 1rem;
+  color: #a855f7;
+  font-weight: 600;
+}
+
+.score-subtitle-compact {
+  font-size: 0.85rem;
+  color: #94a3b8;
+  font-weight: 400;
+  margin: 0;
+}
+
+.score-compact-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+}
+
+.score-container {
+  display: flex;
+  justify-content: center;
+  margin: 1.5rem 0;
+}
+
+/* Charts Section */
+.charts-section {
+  margin-top: 60px;
+  margin-bottom: 40px;
+}
+
+.charts-section h2 {
+  color: #e2e8f0;
+  font-size: 1.5rem;
+  margin-bottom: 1.5rem;
+  font-weight: 600;
+}
+
 .charts-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
@@ -826,6 +936,23 @@
 
   .profile-stats {
     grid-template-columns: repeat(2, 1fr);
+  }
+
+  .developer-score-card-compact {
+    padding: 1.5rem;
+  }
+
+  .score-circle-compact svg {
+    width: 120px;
+    height: 120px;
+  }
+
+  .score-value-compact {
+    font-size: 1rem;
+  }
+
+  .score-label-compact {
+    font-size: 0.9rem;
   }
 
   .score-display {
