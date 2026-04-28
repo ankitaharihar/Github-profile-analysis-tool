@@ -151,6 +151,175 @@ export function ActivityChart({ theme = "dark", data = [] }) {
   );
 }
 
+// 🎓 DEVELOPER SCORE CALCULATOR
+function calculateDeveloperScore(userData, repos = []) {
+  let score = 0;
+  const breakdown = {};
+
+  // 1. Followers Score (0-20 points)
+  const followers = userData?.followers || 0;
+  const followersScore = Math.min(20, Math.floor(followers / 5));
+  breakdown.followers = { score: followersScore, label: "Followers", value: followers, max: 20 };
+  score += followersScore;
+
+  // 2. Public Repos Score (0-20 points)
+  const publicRepos = userData?.public_repos || 0;
+  const reposScore = Math.min(20, Math.floor(publicRepos / 2));
+  breakdown.repos = { score: reposScore, label: "Public Repos", value: publicRepos, max: 20 };
+  score += reposScore;
+
+  // 3. Total Stars Score (0-20 points)
+  const totalStars = repos.reduce((acc, r) => acc + (r.stargazers_count || 0), 0);
+  const starsScore = Math.min(20, Math.floor(totalStars / 10));
+  breakdown.stars = { score: starsScore, label: "Total Stars", value: totalStars, max: 20 };
+  score += starsScore;
+
+  // 4. Languages Diversity (0-15 points)
+  const languages = new Set(repos.map((r) => r.language).filter(Boolean));
+  const languageScore = Math.min(15, languages.size * 2);
+  breakdown.languages = { score: languageScore, label: "Languages", value: languages.size, max: 15 };
+  score += languageScore;
+
+  // 5. Collaboration Score - Total Forks (0-15 points)
+  const totalForks = repos.reduce((acc, r) => acc + (r.forks_count || 0), 0);
+  const forksScore = Math.min(15, Math.floor(totalForks / 5));
+  breakdown.forks = { score: forksScore, label: "Collaboration", value: totalForks, max: 15 };
+  score += forksScore;
+
+  // 6. Gists Score (0-10 points)
+  const gists = userData?.public_gists || 0;
+  const gistsScore = Math.min(10, Math.floor(gists / 2));
+  breakdown.gists = { score: gistsScore, label: "Public Gists", value: gists, max: 10 };
+  score += gistsScore;
+
+  return { score: Math.round(score), breakdown, maxScore: 100 };
+}
+
+// 🎯 DEVELOPER SCORE CARD COMPONENT
+export function DeveloperScoreCard({ userData, repos = [], theme = "dark" }) {
+  const isLight = theme === "light";
+  const { score, breakdown, maxScore } = calculateDeveloperScore(userData, repos);
+  const percentage = (score / maxScore) * 100;
+
+  const getScoreColor = (pct) => {
+    if (pct >= 80) return "#22c55e"; // green
+    if (pct >= 60) return "#3b82f6"; // blue
+    if (pct >= 40) return "#f59e0b"; // amber
+    return "#ec4899"; // pink
+  };
+
+  const scoreColor = getScoreColor(percentage);
+
+  const categories = Object.entries(breakdown).map(([key, data]) => ({
+    key,
+    ...data,
+    percentage: (data.score / data.max) * 100,
+  }));
+
+  return (
+    <div className={`developer-score-card ${isLight ? 'light' : 'dark'}`}>
+      <div className="score-header">
+        <h2>Developer Score</h2>
+      </div>
+
+      <div className="score-display">
+        <div className="score-circle">
+          <svg viewBox="0 0 200 200" style={{ width: "100%", height: "100%" }}>
+            <defs>
+              <linearGradient id="scoreGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor={scoreColor} stopOpacity="1" />
+                <stop offset="100%" stopColor="#6366f1" stopOpacity="0.8" />
+              </linearGradient>
+            </defs>
+            <circle
+              cx="100"
+              cy="100"
+              r="90"
+              fill="none"
+              stroke={isLight ? "#e2e8f0" : "#1e293b"}
+              strokeWidth="8"
+            />
+            <circle
+              cx="100"
+              cy="100"
+              r="90"
+              fill="none"
+              stroke="url(#scoreGradient)"
+              strokeWidth="8"
+              strokeDasharray={`${(percentage / 100) * 565.48} 565.48`}
+              strokeLinecap="round"
+              style={{
+                filter: `drop-shadow(0 0 12px ${scoreColor})`,
+                transform: "rotate(-90deg)",
+                transformOrigin: "100px 100px",
+              }}
+            />
+            <text
+              x="100"
+              y="100"
+              textAnchor="middle"
+              dy="0.3em"
+              fontSize="48"
+              fontWeight="bold"
+              fill={scoreColor}
+              style={{ pointerEvents: "none" }}
+            >
+              {score}
+            </text>
+            <text
+              x="100"
+              y="140"
+              textAnchor="middle"
+              fontSize="16"
+              fill={isLight ? "#64748b" : "#94a3b8"}
+              style={{ pointerEvents: "none" }}
+            >
+              / {maxScore}
+            </text>
+          </svg>
+        </div>
+
+        <div className="score-breakdown">
+          {categories.map((cat) => (
+            <div key={cat.key} className="breakdown-item">
+              <div className="breakdown-label">
+                <span className="label-text">{cat.label}</span>
+                <span className="label-value">{cat.score}/{cat.max}</span>
+              </div>
+              <div className="breakdown-bar">
+                <div
+                  className="breakdown-fill"
+                  style={{
+                    width: `${cat.percentage}%`,
+                    backgroundColor: scoreColor,
+                    boxShadow: `0 0 8px ${scoreColor}`,
+                  }}
+                />
+              </div>
+              <div className="breakdown-detail">{cat.value} {cat.label.toLowerCase()}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="score-interpretation">
+        <div className="interpretation-item excellent">
+          <span>80-100:</span> Excellent Developer
+        </div>
+        <div className="interpretation-item good">
+          <span>60-79:</span> Strong Developer
+        </div>
+        <div className="interpretation-item fair">
+          <span>40-59:</span> Growing Developer
+        </div>
+        <div className="interpretation-item developing">
+          <span>0-39:</span> Emerging Developer
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Charts({ userData, repos = [], theme = "dark" }) {
   const languageData = Array.isArray(userData?.languageBreakdown)
     ? userData.languageBreakdown.map((entry) => ({
@@ -161,6 +330,10 @@ export default function Charts({ userData, repos = [], theme = "dark" }) {
 
   return (
     <section className="charts-section">
+      <div className="score-container">
+        <DeveloperScoreCard userData={userData} repos={repos} theme={theme} />
+      </div>
+
       <div className="charts-grid">
         <div className="chart-card">
           <h3>Language Breakdown</h3>
