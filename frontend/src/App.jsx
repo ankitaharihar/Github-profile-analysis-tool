@@ -247,7 +247,7 @@ export default function App() {
 
   const handleAnalyzeAction = (candidate = username) => {
     if (!authUser) {
-      setError('Please login first')
+      initiateLogin('github')
       return
     }
 
@@ -261,6 +261,9 @@ export default function App() {
   }
 
   const getAuthUrl = (provider) => `${API_BASE_URL}/auth/${provider}`
+  const initiateLogin = (provider = 'github') => {
+    window.location.href = getAuthUrl(provider)
+  }
 
   const filteredRepos = useMemo(() => {
     let next = [...repos]
@@ -334,20 +337,7 @@ export default function App() {
               <span className="user-name">{authUser.login}</span>
               <button onClick={handleLogout} className="logout-btn">Logout</button>
             </>
-          ) : (
-            <div className="auth-options-nav">
-              {oauthConfig.github ? (
-                <a href={getAuthUrl('github')} className="login-btn">GitHub</a>
-              ) : (
-                <button className="login-btn disabled" disabled>GitHub</button>
-              )}
-              {oauthConfig.google ? (
-                <a href={getAuthUrl('google')} className="login-btn google-login-btn">Google</a>
-              ) : (
-                <button className="login-btn google-login-btn disabled" disabled>Google</button>
-              )}
-            </div>
-          )}
+          ) : null}
         </div>
       </nav>
 
@@ -355,37 +345,32 @@ export default function App() {
         <div className="landing-section">
           <div className="landing-content">
             <h1>Unlock the Power of RepoInsight</h1>
-            <p>Analyze profiles, repos, and developer momentum in seconds, then turn insights into better career and team decisions.</p>
-            <div className="auth-options-hero">
-              {oauthConfig.github ? (
-                <a href={getAuthUrl('github')} className="login-btn">Continue with GitHub</a>
-              ) : (
-                <button className="login-btn disabled" disabled>GitHub not configured</button>
-              )}
-              {oauthConfig.google ? (
-                <a href={getAuthUrl('google')} className="login-btn google-login-btn">Continue with Google</a>
-              ) : (
-                <button className="login-btn google-login-btn disabled" disabled>Google not configured</button>
-              )}
-            </div>
-            <div className="landing-buttons">
-              <button className="btn-secondary">No credit card required</button>
-              <button className="btn-secondary">Cancel anytime</button>
-              <button className="btn-secondary">Setup in under 60 seconds</button>
-            </div>
+            <p>Analyze GitHub profiles and repositories with a clean, focused workflow.</p>
 
-              <div className="search-box-landing">
+            <div
+              className="search-box-landing"
+              onClick={() => {
+                if (!authUser) {
+                  initiateLogin('github')
+                }
+              }}
+            >
               <div className="search-input-wrap">
                 <input
                   type="text"
-                  placeholder="Login first to search usernames"
+                  placeholder="Enter GitHub username (e.g., torvalds)"
                   value={username}
-                  disabled
                   onChange={(e) => {
+                    if (!authUser) return
                     const nextValue = e.target.value
                     setUsername(nextValue)
                     handleSuggestionSearch(nextValue)
                     setShowSuggestions(true)
+                  }}
+                  onClick={() => {
+                    if (!authUser) {
+                      initiateLogin('github')
+                    }
                   }}
                   onKeyDown={(e) => {
                     if (e.key === 'ArrowDown') {
@@ -394,11 +379,15 @@ export default function App() {
                       setActiveIndex((prev) => (prev > 0 ? prev - 1 : 0))
                     } else if (e.key === 'Enter') {
                       e.preventDefault()
+                      if (!authUser) {
+                        initiateLogin('github')
+                        return
+                      }
                       if (activeIndex >= 0) {
                         handleAnalyzeAction(suggestions[activeIndex].login)
                         setShowSuggestions(false)
                       } else {
-                        setError('Please login first')
+                        handleAnalyzeAction()
                       }
                     }
                   }}
@@ -431,6 +420,10 @@ export default function App() {
               </div>
               <button
                 onClick={() => {
+                  if (!authUser) {
+                    initiateLogin('github')
+                    return
+                  }
                   if (activeIndex >= 0 && suggestions[activeIndex]) {
                     handleAnalyzeAction(suggestions[activeIndex].login)
                     setShowSuggestions(false)
@@ -443,8 +436,18 @@ export default function App() {
                 Analyze
               </button>
             </div>
-            <p className="landing-hint">Get profile score, AI insights, and repo-level analytics in one clean workflow.</p>
-            <p className="landing-login-hint">Sign in to unlock search history and full analytics.</p>
+            <div className="auth-options-hero">
+              {oauthConfig.github ? (
+                <a href={getAuthUrl('github')} className="login-btn hero-primary-btn">Continue with GitHub</a>
+              ) : (
+                <button className="login-btn disabled hero-primary-btn" disabled>Continue with GitHub</button>
+              )}
+              {oauthConfig.google ? (
+                <a href={getAuthUrl('google')} className="login-btn google-login-btn hero-secondary-btn">Continue with Google</a>
+              ) : (
+                <button className="login-btn google-login-btn disabled hero-secondary-btn" disabled>Continue with Google</button>
+              )}
+            </div>
           </div>
         </div>
       ) : (
