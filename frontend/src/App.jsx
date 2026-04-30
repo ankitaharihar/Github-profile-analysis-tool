@@ -237,8 +237,9 @@ export default function App() {
       setUserData(profileRes.data)
       setRepos(normalizedRepos)
     } catch {
-      setUserData(null)
-      setRepos([])
+      // Preserve existing `userData`/`repos` on transient failures so
+      // the previously-loaded profile remains visible while a new
+      // fetch attempt fails. Only show an error message.
       setError('Failed to fetch data')
     } finally {
       setLoading(false)
